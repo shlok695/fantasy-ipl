@@ -1,0 +1,33 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const status = searchParams.get('status'); // 'unsold' or 'sold' or all
+  const q = searchParams.get('q'); // search name
+
+  let whereClause: any = {};
+
+  if (status === 'unsold') {
+    whereClause.userId = null;
+  } else if (status === 'sold') {
+    whereClause.userId = { not: null };
+  }
+
+  if (q) {
+    whereClause.name = { contains: q }; // sqlite contains uses ILIKE essentially
+  }
+
+  try {
+    const players = await prisma.player.findMany({
+      where: whereClause,
+      include: {
+        user: true,
+      },
+      orderBy: { number: 'asc' },
+    });
+    return NextResponse.json(players);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
