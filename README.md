@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🏏 Fantasy IPL League Manager
 
-## Getting Started
+![Fantasy IPL Banner](https://img.shields.io/badge/Next.js-14-black?logo=next.js) ![Prisma](https://img.shields.io/badge/Prisma-ORM-blue?logo=prisma) ![TailwindCSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwind-css)
 
-First, run the development server:
+A full-stack, real-time Fantasy Cricket Application designed exclusively for family and friends. Host a live IPL auction, build your 11-man squads, and watch your total points dynamically update via a proprietary Dream11 points calculation engine!
 
+## ✨ Key Features
+- **Live Auction Room**: A fully functional admin-controlled auction interface to sell players and cleanly manage franchise budgets (₹100 Cr starting).
+- **Dream11 Points Engine**: A strict T20 ruleset engine that parses live runs, wickets, strike-rates, and API bonus thresholds into accurate Fantasy Points.
+- **Top Performers Tracker**: An elegant UI tracking the League Leaders across your franchises *(Orange Cap, Purple Cap, Firepower, and Control stats)*. 
+- **True 11-Man Aggregate Scoring**: Unlike traditional summed scoring, the system algorithmically identifies and aggregates only the **Top 11** highest-performing players per team across the season.
+- **Live API Match Sync**: Built-in endpoints to securely hook into automated cricket APIs (like CricAPI/SportMonks) to automatically sync and distribute match payload statistics instantly.
+- **Next-Auth Franchise Login**: Create and secure your custom franchise safely using encrypted credentials.
+
+## 🚀 Tech Stack
+- **Frontend**: Next.js (App Router), React, Tailwind CSS v4, Lucide Icons
+- **Backend & Database**: Next.js API Routes, SQLite, Prisma ORM
+- **Authentication**: Next-Auth (Credentials Provider, bcrypt hashing)
+- **Styling**: Modern Glassmorphism & High-Contrast Dark Mode
+
+## 🛠️ Quick Setup
+1. Clone this repository to your local machine:
+```bash
+git clone https://github.com/YourUsername/fantasy-ipl.git
+cd fantasy-ipl
+```
+2. Install the necessary dependencies:
+```bash
+npm install
+```
+3. Set your secret environment variables in a `.env` file:
+```env
+DATABASE_URL="file:./dev.db"
+NEXTAUTH_SECRET="anything_you_like"
+NEXTAUTH_URL="http://localhost:3000"
+CRICKET_API_KEY="your_api_key_here" # Optional for live payload sync
+```
+4. Push the schema to the database:
+```bash
+npx prisma db push
+```
+5. Launch the development server!
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
