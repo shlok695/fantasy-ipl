@@ -1,0 +1,196 @@
+{
+  "totalFound": 2,
+  "didYouMean": "find allen",
+  "resultTypes": [
+    {
+      "totalFound": 1,
+      "type": "player",
+      "displayName": "Players"
+    },
+    {
+      "totalFound": 58802,
+      "type": "article",
+      "displayName": "Articles"
+    }
+  ],
+  "results": [
+    {
+      "type": "player",
+      "totalFound": 1,
+      "page": 1,
+      "limit": 1,
+      "displayName": "Players",
+      "contents": [
+        {
+          "id": "30a30d17-4afc-8beb-8bb5-f7771455e83f",
+          "uid": "s:200~a:959759",
+          "guid": "30a30d17-4afc-8beb-8bb5-f7771455e83f",
+          "type": "player",
+          "displayName": "Finn Allen",
+          "description": "Cricket",
+          "subtitle": "New Zealand",
+          "link": {
+            "app": "sportscenter://x-callback-url/showClubhouse?uid=s:200~a:959759",
+            "web": "https://www.espncricinfo.com/ci/content/player/959759.html"
+          },
+          "image": {
+            "default": "https://a.espncdn.com/i/headshots/cricket/players/default-player-logo-500.png",
+            "defaultDark": "https://a.espncdn.com/i/headshots/cricket/players/default-player-logo-500.png"
+          },
+          "sport": "cricket"
+        }
+      ]
+    },
+    {
+      "type": "article",
+      "totalFound": 1,
+      "page": 1,
+      "limit": 1,
+      "displayName": "Articles",
+      "contents": [
+        {
+          "id": "48158985",
+          "nowId": "1-48158985",
+          "type": "story",
+          "displayName": "Does Finn Allen now hold the record for the fastest T20 World Cup hundred?",
+          "link": {
+            "web": "https://www.espn.com/cricket/story/_/id/48158985/does-finn-allen-now-hold-record-fastest-t20-world-cup-hundred"
+          },
+          "images": [
+            {
+              "width": 900,
+              "name": "cricket:image:1527000 [900x600]",
+              "peers": [
+                {
+                  "width": 1296,
+                  "name": "cricket:image:1527000 [1296x1296]",
+                  "caption": "Jacob Bethell celebrates his century",
+                  "url": "https://a.espncdn.com/i/cricket/cricinfo/1527000_1296x1296.jpg",
+                  "height": 1296
+                },
+                {
+                  "width": 1296,
+                  "name": "cricket:image:1527000 [1296x729]",
+                  "caption": "Jacob Bethell celebrates his century",
+                  "url": "https://a.espncdn.com/i/cricket/cricinfo/1527000_1296x729.jpg",
+                  "height": 729
+                },
+                {
+                  "width": 1296,
+                  "name": "cricket:image:1527000 [1296x864]",
+                  "caption": "Jacob Bethell celebrates his century",
+                  "url": "https://a.espncdn.com/i/cricket/cricinfo/1527000_1296x864.jpg",
+                  "height": 864
+                },
+                {
+                  "width": 1296,
+                  "name": "cricket:image:1527000 [1296x518]",
+                  "caption": "Jacob Bethell celebrates his century",
+                  "url": "https://a.espncdn.com/i/cricket/cricinfo/1527000_1296x518.jpg",
+                  "height": 518
+                }
+              ],
+              "caption": "Jacob Bethell celebrates his century",
+              "url": "https://a.espncdn.com/i/cricket/cricinfo/1527000_900x600.jpg",
+              "height": 600
+            },
+            {
+              "width": 900,
+              "name": "cricket:image:1526908 [900x801]",
+              "peers": [
+                {
+                  "width": 1296,
+                  "name": "cricket:image:1526908 [1296x1296]",
+                  "caption": "Finn Allen lets out a roar to match the noise of the crowd",
+                  "url": "https://a.espncdn.com/i/cricket/cricinfo/1526908_1296x1296.jpg",
+                  "height": 1296
+                },
+                {
+                  "width": 1296,
+                  "name": "cricket:image:1526908 [1296x729]",
+                  "caption": "Finn Allen lets out a roar to match the noise of the crowd",
+                  "url": "https://a.espncdn.com/i/cricket/cricinfo/1526908_1296x729.jpg",
+                  "height": 729
+                },
+                {
+                  "width": 1296,
+                  "name": "cricket:image:1526908 [1296x864]",
+                  "caption": "Finn Allen lets out a roar to match the noise of the crowd",
+                  "url": "https://a.espncdn.com/i/cricket/cricinfo/1526908_1296x864.jpg",
+                  "height": 864
+                },
+                {
+                  "width": 1296,
+                  "name": "cricket:image:1526908 [1296x518]",
+                  "caption": "Finn Allen lets out a roar to match the noise of the crowd",
+                  "url": "https://a.espncdn.com/i/cricket/cricinfo/1526908_1296x518.jpg",
+                  "height": 518
+                }
+              ],
+              "caption": "Finn Allen lets out a roar to match the noise of the crowd",
+              "url": "https://a.espncdn.com/i/cricket/cricinfo/1526908_900x801.jpg",
+              "height": 801
+            }
+          ],
+          "byline": "Steven Lynch",
+          "date": "2026-03-10T02:17:35.000+00:00",
+          "isPremium": false,
+          "categories": [
+            {
+              "id": 133853,
+              "description": "news - uk cricket",
+              "type": "topic",
+              "sportId": 0
+            },
+            {
+              "uid": "s:200~e:1512772",
+              "description": "India v England",
+              "type": "event"
+            },
+            {
+              "id": 702685,
+              "description": "Steven Lynch",
+              "type": "contributor"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            },
+            {
+              "type": "guid"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

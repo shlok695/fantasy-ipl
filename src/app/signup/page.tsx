@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, Coins, Lock } from "lucide-react";
+import { UserPlus, Lock } from "lucide-react";
 
 export default function SignupPage() {
   const router = useRouter();
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamPassword, setNewTeamPassword] = useState("");
-  const [newTeamBudget, setNewTeamBudget] = useState("100");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -25,7 +24,7 @@ export default function SignupPage() {
         body: JSON.stringify({ 
           name: newTeamName, 
           password: newTeamPassword, 
-          budget: parseFloat(newTeamBudget) 
+          budget: 100 // Default to 100 as the input field is removed
         })
       });
 
@@ -88,19 +87,7 @@ export default function SignupPage() {
             <p className="text-xs text-gray-500 mt-1">You will use this to login to your team during the auction.</p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">Starting Budget (Cr)</label>
-            <div className="relative">
-              <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-              <input 
-                type="number" 
-                required
-                value={newTeamBudget}
-                onChange={e => setNewTeamBudget(e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all font-mono"
-              />
-            </div>
-          </div>
+
 
           <button 
             type="submit"

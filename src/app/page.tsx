@@ -115,33 +115,71 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-4">
                 {teams.map((team, idx) => (
-                  <div key={team.id} className="glass p-4 rounded-xl flex items-center justify-between hover-glow group transition-all">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg
-                        ${idx === 0 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' : 
-                          idx === 1 ? 'bg-slate-300/20 text-slate-300 border border-slate-300/50' :
-                          idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/50' :
-                          'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'}`}>
-                        {idx + 1}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-xl">{team.name}</h3>
-                        <p className="text-sm text-gray-400 flex items-center gap-1">
-                          <Users size={14} /> {team.players?.length || 0} Players
-                        </p>
-                      </div>
-                    </div>
+                  <div key={team.id} className="glass p-4 rounded-xl flex flex-col gap-4 hover-glow group transition-all">
                     
-                    <div className="text-right flex items-center gap-8">
-                      <div>
-                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Budget</p>
-                        <p className="font-mono text-emerald-400">₹{team.budget.toFixed(1)} Cr</p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg
+                          ${idx === 0 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' : 
+                            idx === 1 ? 'bg-slate-300/20 text-slate-300 border border-slate-300/50' :
+                            idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/50' :
+                            'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'}`}>
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-xl">{team.name}</h3>
+                          <p className="text-sm text-gray-400 flex items-center gap-1">
+                            <Users size={14} /> {team.players?.length || 0} Players
+                          </p>
+                        </div>
                       </div>
-                      <div className="bg-indigo-500/20 px-4 py-2 rounded-lg border border-indigo-500/30 text-center min-w-[100px]">
-                        <p className="text-xs text-indigo-300 uppercase tracking-wider font-semibold">Points</p>
-                        <p className="font-black text-2xl text-white">{team.totalPoints}</p>
+                      
+                      <div className="text-right flex items-center gap-8">
+                        <div>
+                          <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Budget</p>
+                        {session?.user?.name === 'admin' ? (
+                          <div className="flex items-center gap-1 font-mono text-emerald-400">
+                            ₹
+                            <input
+                              type="number"
+                              defaultValue={team.budget}
+                              onBlur={async (e) => {
+                                const val = parseFloat(e.target.value);
+                                if (!isNaN(val)) {
+                                  await fetch('/api/teams/budget', { 
+                                    method: 'POST', 
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ teamId: team.id, newBudget: val }) 
+                                  });
+                                }
+                              }}
+                              className="w-16 bg-transparent border-b border-emerald-500/30 text-emerald-400 focus:outline-none focus:border-emerald-400 text-right font-bold"
+                            />
+                            Cr
+                          </div>
+                        ) : (
+                          <p className="font-mono text-emerald-400 font-bold">₹{team.budget.toFixed(1)} Cr</p>
+                        )}
+                      </div>
+                        <div className="bg-indigo-500/20 px-4 py-2 rounded-lg border border-indigo-500/30 text-center min-w-[100px]">
+                          <p className="text-xs text-indigo-300 uppercase tracking-wider font-semibold">Points</p>
+                          <p className="font-black text-2xl text-white">{team.totalPoints}</p>
+                        </div>
                       </div>
                     </div>
+
+                    {/* SQUAD LIST */}
+                    {team.players && team.players.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 pl-14">
+                        {team.players.map((p: any) => (
+                          <div key={p.id} className="bg-black/30 border border-white/5 rounded px-2 py-1 text-xs text-gray-400 flex justify-between items-center group-hover:border-white/10 transition-colors">
+                            <span className="truncate pr-1">{p.name}</span>
+                            <span className="text-indigo-400 font-bold">₹{p.auctionPrice.toFixed(1)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                   </div>
                 ))}
               </div>

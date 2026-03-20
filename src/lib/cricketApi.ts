@@ -71,18 +71,101 @@ const MOCK_SCORECARD = [
 export async function fetchLiveMatchStats(matchId: string): Promise<{ name: string, stats: PlayerMatchStats }[]> {
   const apiKey = process.env.CRICKET_API_KEY;
 
-  if (!apiKey || apiKey === "your_api_key_here") {
-    console.log(`[MOCK API] Using mock data for Match ID: ${matchId} because CRICKET_API_KEY is missing.`);
+  if (!apiKey || apiKey === "your_api_key_here" || matchId === "mock_test_1") {
+    console.log(`[MOCK API] Using mock data for Match ID: ${matchId}`);
     // Simulate network delay
     await new Promise(res => setTimeout(res, 1000));
     return MOCK_SCORECARD;
   }
 
-  // --- REAL CRICKET API IMPLEMENTATION (e.g., cricapi.com) ---
-  // Here we would implement the real fetch:
-  // const res = await fetch(`https://api.cricapi.com/v1/match_scorecard?id=${matchId}&apikey=${apiKey}`);
-  // const data = await res.json();
-  // We would then map 'data.data.scorecard' to the PlayerMatchStats interface.
-  
-  throw new Error("Live API mapping for the specific provider is not yet defined. Please use mock mode or define the provider data mapping.");
+  try {
+    const res = await fetch(`https://api.cricapi.com/v1/match_scorecard?id=${matchId}&apikey=${apiKey}`);
+    const data = await res.json();
+    
+    if (data.status !== "success" || !data.data || data.data.length === 0 || !data.data[0].scorecard) {
+      throw new Error(data.reason || "Invalid or unsupported match ID, or scorecard not available yet.");
+    }
+    
+    const scorecardArray = data.data[0].scorecard;
+    const playerStatsMap = new Map<string, PlayerMatchStats>();
+    
+    const getStats = (name: string): PlayerMatchStats => {
+      if (!playerStatsMap.has(name)) {
+        playerStatsMap.set(name, {
+          runs: 0, ballsFaced: 0, fours: 0, sixes: 0, 
+          wickets: 0, oversBowled: 0, runsConceded: 0, maidens: 0, 
+          catches: 0, stumpings: 0, runOutsDirect: 0, runOutsIndirect: 0, 
+          lbwBowled: 0, dotBalls: 0, inStartingXI: true,
+        });
+      }
+      return playerStatsMap.get(name)!;
+    };
+
+    for (const inning of scorecardArray) {
+      if (inning.batting) {
+         for (const bat of inning.batting) {
+            const name = bat.batsman?.name || "Unknown";
+            const stats = getStats(name);
+            stats.runs += Number(bat.r || 0);
+            stats.ballsFaced += Number(bat.b || 0);
+            stats.fours += Number(bat["4s"] || 0);
+            stats.sixes += Number(bat["6s"] || 0);
+            
+            const dismiss = String(bat.dismissal || "");
+            if (dismiss.includes("c ") && dismiss.includes("b ")) {
+               const catcherMatch = dismiss.match(/c\s(.*?)\sb\s/);
+               if (catcherMatch && catcherMatch[1]) {
+                 const catcherStats = getStats(catcherMatch[1].trim());
+                 catcherStats.catches += 1;
+               }
+            } else if (dismiss.includes("st ")) {
+               const stumperMatch = dismiss.match(/st\s(.*?)\sb\s/);
+               if (stumperMatch && stumperMatch[1]) {
+                 const stumperStats = getStats(stumperMatch[1].trim());
+                 stumperStats.stumpings += 1;
+               }
+            } else if (dismiss.includes("run out")) {
+               const runnerMatch = dismiss.match(/run out \((.*?)\)/);
+               if (runnerMatch && runnerMatch[1]) {
+                 const thrower = runnerMatch[1].split('/')[0].trim();
+                 if (thrower) {
+                    const throwerStats = getStats(thrower);
+                    throwerStats.runOutsDirect += 1; 
+                 }
+               }
+            } else if (dismiss.includes("lbw") || dismiss.startsWith("b ")) {
+               const bowlerMatch = dismiss.match(/b\s(.*)/);
+               if (bowlerMatch && bowlerMatch[1]) {
+                 const bowlerStats = getStats(bowlerMatch[1].trim());
+                 bowlerStats.lbwBowled += 1; // triggers +8 bonus in Points Engine
+               }
+            }
+         }
+      }
+      
+      if (inning.bowling) {
+         for (const bowl of inning.bowling) {
+            const name = bowl.bowler?.name || "Unknown";
+            const stats = getStats(name);
+            stats.oversBowled += Number(bowl.o || 0);
+            stats.maidens += Number(bowl.m || 0);
+            stats.runsConceded += Number(bowl.r || 0);
+            stats.wickets += Number(bowl.w || 0);
+            stats.dotBalls = (stats.dotBalls || 0) + Number(bowl['0s'] || bowl.d || 0);
+         }
+      }
+    }
+    
+    // Convert Map back to array
+    const result = [];
+    for (const [name, stats] of playerStatsMap.entries()) {
+      if (name !== 'Unknown') {
+        result.push({ name, stats });
+      }
+    }
+    
+    return result;
+  } catch(e: any) {
+    throw new Error(`Failed to map API scorecard: ${e.message}`);
+  }
 }

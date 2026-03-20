@@ -4,7 +4,10 @@ import bcrypt from 'bcrypt';
 
 export async function GET() {
   try {
-    const teams = await prisma.user.findMany({
+    const users = await prisma.user.findMany({
+      where: {
+        name: { not: 'admin' }
+      },
       include: {
         players: {
           include: {
@@ -17,7 +20,7 @@ export async function GET() {
         { name: 'asc' }
       ]
     });
-    return NextResponse.json(teams);
+    return NextResponse.json(users);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
