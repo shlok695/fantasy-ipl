@@ -34,8 +34,19 @@ export default async function RootLayout({
             </Link>
             <div className="flex space-x-6 text-sm font-medium items-center">
               <Link href="/" className="hover:text-indigo-400 transition-colors">Dashboard</Link>
-              <Link href="/auction" className="hover:text-rose-400 transition-colors">Auction Room</Link>
-              <Link href="/admin/points" className="hover:text-indigo-400 transition-colors">Points Admin</Link>
+              <Link href="/auction/live" className="hover:text-rose-400 transition-colors flex items-center gap-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                </span>
+                Live Room
+              </Link>
+              {session?.user?.name === 'admin' && (
+                <>
+                  <Link href="/auction" className="hover:text-indigo-400 transition-colors">Auction Admin</Link>
+                  <Link href="/admin/points" className="hover:text-indigo-400 transition-colors">Points Admin</Link>
+                </>
+              )}
               <Link href="/rules" className="text-gray-400 hover:text-white transition-colors" title="How to Play & Points System">
                 <HelpCircle size={20} />
               </Link>

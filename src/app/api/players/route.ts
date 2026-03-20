@@ -8,8 +8,15 @@ export async function GET(request: Request) {
 
   let whereClause: any = {};
 
-  if (status === 'unsold') {
+  if (status === 'upcoming') {
     whereClause.userId = null;
+    whereClause.OR = [
+      { acquisition: null },
+      { acquisition: { not: 'Unsold' } }
+    ];
+  } else if (status === 'passed') {
+    whereClause.userId = null;
+    whereClause.acquisition = 'Unsold';
   } else if (status === 'sold') {
     whereClause.userId = { not: null };
   }

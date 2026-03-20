@@ -17,6 +17,7 @@ model User {
   updatedAt   DateTime @updatedAt
   
   players     Player[]
+  auctionWins AuctionState[]
 }
 
 model Player {
@@ -36,6 +37,7 @@ model Player {
   user         User?    @relation(fields: [userId], references: [id])
 
   points       PlayerPoints[]
+  auctionState AuctionState?
 }
 
 model PlayerPoints {
@@ -52,4 +54,19 @@ model PlayerPoints {
   dotBalls   Int      @default(0)
   
   createdAt DateTime @default(now())
+}
+
+// Singleton state for the Live Multiplayer Auction
+model AuctionState {
+  id              String   @id @default("global")
+  
+  currentPlayerId String?  @unique
+  player          Player?  @relation(fields: [currentPlayerId], references: [id])
+  
+  highestBid      Float    @default(0)
+  highestBidderId String?
+  highestBidder   User?    @relation(fields: [highestBidderId], references: [id])
+  
+  status          String   @default("WAITING") // WAITING, BIDDING, SUMMARY
+  readyTeams      String?  // Comma-separated user IDs who clicked Ready
 }

@@ -1,47 +1,37 @@
 const { PrismaClient } = require('@prisma/client');
-const fs = require('fs');
-const readline = require('readline');
+const XLSX = require('xlsx');
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const filePath = 'e:/auction/IPL_Auction_2026_Sold_Player.csv';
+  const filePath = 'e:/auction/auction_db_final.xlsx';
   console.log(`Reading from ${filePath}`);
   
-  const fileStream = fs.createReadStream(filePath, { encoding: 'utf-8' });
-  const rl = readline.createInterface({
-    input: fileStream,
-    crlfDelay: Infinity
-  });
+  const wb = XLSX.readFile(filePath);
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const data = XLSX.utils.sheet_to_json(ws);
 
-  let isFirstLine = true;
   let count = 0;
 
-  for await (const line of rl) {
-    if (isFirstLine) {
-      isFirstLine = false;
-      continue;
-    }
-    
-    // Split line parsing CSV properly ignoring commas inside quotes if needed, 
-    // but simple split is ok if data has no complex quotes.
-    // The data we saw earlier didn't seem to have complex quotes.
-    const parts = line.split(',');
-    if (parts.length < 6) continue;
-    
-    const number = parseInt(parts[0], 10) || null;
-    const name = parts[1]?.trim();
-    const acquisition = parts[2]?.trim();
-    const type = parts[3]?.trim();
-    const role = parts[4]?.trim();
-    const basePrice = parts[5]?.trim();
+  for (const row of data) {
+    const number = row['No.'] ? parseInt(row['No.'], 10) : null;
+    const rawName = row['Player']?.trim();
+    if (!rawName) continue;
 
-    if (!name) continue;
+    // Clean player name: strip everything from * onwards (removes * (SA), * (AUS) etc.)
+    const name = rawName.replace(/\*.*/g, '').trim();
+
+    const acquisition = row['Acquisition']?.trim() || null;
+    const type = row['Type']?.trim() || null;
+    const role = row['Role']?.trim() || null;
+    const basePrice = row['Price']?.trim() || null;
+    const country = row['Nationality']?.trim() || null;
 
     await prisma.player.create({
       data: {
         number,
         name,
+        country,
         acquisition,
         type,
         role,
@@ -51,7 +41,7 @@ async function main() {
     count++;
   }
   
-  console.log(`Successfully seeded ${count} players!`);
+  console.log(`Successfully seeded ${count} players from auction_db_final.xlsx!`);
 }
 
 main()

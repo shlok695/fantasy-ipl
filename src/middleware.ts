@@ -1,11 +1,22 @@
 import { withAuth } from "next-auth/middleware";
+import { NextResponse } from "next/server";
 
-export default withAuth({
-  pages: {
-    signIn: '/login',
+export default withAuth(
+  function middleware(req) {
+    if (req.nextauth.token?.name !== "admin") {
+      return NextResponse.redirect(new URL('/', req.url));
+    }
   },
-  secret: process.env.NEXTAUTH_SECRET || "super_secret_fantasy_ipl_key_2026"
-});
+  {
+    callbacks: {
+      authorized: ({ token }) => !!token,
+    },
+    pages: {
+      signIn: '/login',
+    },
+    secret: process.env.NEXTAUTH_SECRET || "fallback_secret_for_local_auction_app_123"
+  }
+);
 
 export const config = {
   matcher: ["/auction", "/admin/points"]
