@@ -29,9 +29,8 @@ export async function POST(request: Request) {
       where: { name: { not: "admin" } } 
     });
 
-    if (readyTeams.length >= activeTeams && activeTeams > 0) {
-      // ALL FRANCHISES ARE READY! 
-      // Auto-push the next player and start the next round!
+    // If no teams exist, or everyone is ready, push next!
+    if (activeTeams === 0 || readyTeams.length >= activeTeams) {
       await pushNextPlayer();
       return NextResponse.json({ autoPushed: true });
     } else {

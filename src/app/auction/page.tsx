@@ -16,7 +16,7 @@ export default function AuctionRoom() {
     if (selectedPlayer?.name) {
       setDynamicMeta(null);
       const localMeta = getPlayerMeta(selectedPlayer.name);
-      if (localMeta.image && localMeta.age && localMeta.team) {
+      if (localMeta.image && localMeta.team) {
          setDynamicMeta(localMeta);
          return;
       }
@@ -26,7 +26,6 @@ export default function AuctionRoom() {
         .then(data => {
            setDynamicMeta({
              image: localMeta.image || data.image,
-             age: localMeta.age || data.age,
              team: localMeta.team || data.iplTeam
            });
         })
@@ -43,15 +42,15 @@ export default function AuctionRoom() {
   const AUCTION_SETS_UI = [
     { label: 'Any (Auto-Detect)', value: '' },
     { label: 'Capped Batters', value: 'Capped|Batter' },
-    { label: 'Capped All-Rounders', value: 'Capped|All-Rounder' },
+    { label: 'Capped All-rounders', value: 'Capped|All-rounder' },
     { label: 'Capped Wicketkeepers', value: 'Capped|Wicketkeeper' },
     { label: 'Capped Bowlers', value: 'Capped|Bowler' },
     { label: 'Uncapped Batters', value: 'Uncapped|Batter' },
-    { label: 'Uncapped All-Rounders', value: 'Uncapped|All-Rounder' },
+    { label: 'Uncapped All-rounders', value: 'Uncapped|All-rounder' },
     { label: 'Uncapped Wicketkeepers', value: 'Uncapped|Wicketkeeper' },
     { label: 'Uncapped Bowlers', value: 'Uncapped|Bowler' },
     { label: 'Overseas Batters', value: 'Overseas|Batter' },
-    { label: 'Overseas All-Rounders', value: 'Overseas|All-Rounder' },
+    { label: 'Overseas All-rounders', value: 'Overseas|All-rounder' },
     { label: 'Overseas Wicketkeepers', value: 'Overseas|Wicketkeeper' },
     { label: 'Overseas Bowlers', value: 'Overseas|Bowler' },
   ];
@@ -230,7 +229,7 @@ export default function AuctionRoom() {
                 <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <img src={getPlayerImage(p.name)} alt={p.name} className="w-10 h-10 rounded-full border border-white/10 shadow-lg object-cover bg-black" />
+                    <img src={getPlayerImage(p.name, p.role)} alt={p.name} className="w-10 h-10 rounded-full border border-white/10 shadow-lg object-cover bg-black" />
                     {getCountryFlag(p.country) && (
                       <img src={getCountryFlag(p.country)!} alt={p.country || "India"} className="absolute -bottom-1 -right-1 w-4 h-3 object-cover rounded shadow" />
                     )}
@@ -250,6 +249,13 @@ export default function AuctionRoom() {
           <div className="pt-4 mt-2 border-t border-white/10">
             <div className="flex flex-col gap-3">
               <h3 className="font-bold text-amber-500 flex items-center gap-2 text-sm uppercase tracking-widest"><Activity size={16}/> Auto-Queue Dispatch</h3>
+              <button 
+                onClick={() => handleControl('START_TEAM_QUEUE')}
+                disabled={loading}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black rounded-lg shadow-lg shadow-orange-500/20 transition-all mb-1"
+              >
+                1. Auction IPL Teams (Start)
+              </button>
               <div className="flex items-stretch gap-2 relative">
                 <select 
                   value={queueCategory}
@@ -261,9 +267,9 @@ export default function AuctionRoom() {
                 <button 
                   onClick={() => handleControl('START_AUTO_QUEUE')}
                   disabled={loading}
-                  className="flex-1 py-0 flex items-center justify-center bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-sm font-black rounded-lg shadow-lg shadow-amber-500/20 transition-all whitespace-nowrap"
+                  className="flex-1 py-0 flex items-center justify-center bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-400 hover:to-blue-400 text-white text-sm font-black rounded-lg shadow-lg shadow-indigo-500/20 transition-all whitespace-nowrap"
                 >
-                  Launch!
+                  2. Automated Live
                 </button>
               </div>
             </div>
@@ -280,7 +286,7 @@ export default function AuctionRoom() {
 
               <div className="flex items-center gap-6">
                 <div className="relative">
-                  <img src={dynamicMeta?.image || getPlayerImage(selectedPlayer.name)} alt={selectedPlayer.name} className="w-32 h-32 rounded-3xl border-4 border-white/10 shadow-2xl hover:scale-105 transition-transform object-cover bg-black" />
+                  <img src={dynamicMeta?.image || getPlayerImage(selectedPlayer.name, selectedPlayer.role)} alt={selectedPlayer.name} className="w-32 h-32 rounded-3xl border-4 border-white/10 shadow-2xl hover:scale-105 transition-transform object-cover bg-black" />
                   {getCountryFlag(selectedPlayer.country) && (
                     <img src={getCountryFlag(selectedPlayer.country)!} alt={selectedPlayer.country || "India"} className="absolute -bottom-3 -right-3 w-10 h-7 object-cover rounded-md shadow-lg border border-white/20 z-20" />
                   )}
@@ -297,11 +303,6 @@ export default function AuctionRoom() {
                     <span className="bg-rose-500/20 text-rose-300 font-semibold px-3 py-1 rounded-full text-sm border border-rose-500/30">
                       {selectedPlayer.type}
                     </span>
-                    {dynamicMeta?.age && (
-                      <span className="bg-amber-500/20 text-amber-300 font-semibold px-3 py-1 rounded-full text-sm border border-amber-500/30">
-                        Age: {dynamicMeta.age}
-                      </span>
-                    )}
                     {dynamicMeta?.team && (
                       <span className="bg-white/10 text-white font-bold px-3 py-1 rounded-full text-sm border border-white/20 flex items-center gap-1.5">
                         <img src={getFranchiseFlag(dynamicMeta.team)} alt={dynamicMeta.team} className="w-4 h-4 rounded-full object-cover bg-white" />
@@ -322,24 +323,21 @@ export default function AuctionRoom() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/10">
                 {/* LIVE ROOM CONTROLS */}
                 <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-6 space-y-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-bold text-indigo-400 flex items-center gap-2"><Activity size={18}/> Live Multiplayer Room</h3>
-                    {liveState?.status === "BIDDING" && (
-                      <button 
-                         onClick={() => handleControl('RESET_BID')}
-                         className="px-3 py-1 bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white rounded text-xs font-bold transition-all border border-red-500/30 shadow-lg shadow-red-500/10"
-                      >
-                         ⚠️ Reset Bid
-                      </button>
-                    )}
-                    {liveState?.status === "SUMMARY" && (
-                      <button 
-                         onClick={() => handleControl('START_AUTO_QUEUE')}
-                         className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-white rounded text-xs font-bold transition-all shadow-lg shadow-amber-500/25 animate-pulse"
-                      >
-                         Force Auto-Push ({liveState.readyTeams ? liveState.readyTeams.split(',').filter(Boolean).length : 0} Ready)
-                      </button>
-                    )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleControl('START_AUTO_QUEUE')}
+                      disabled={loading}
+                      className="flex-1 py-3 font-bold rounded-xl text-white bg-amber-600 hover:bg-amber-500 shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+                    >
+                      Automated Live
+                    </button>
+                    <button 
+                       onClick={() => handleControl('RESET_BID')}
+                       disabled={loading}
+                       className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all"
+                    >
+                       Reset Bid
+                    </button>
                   </div>
 
                   <button
@@ -359,7 +357,7 @@ export default function AuctionRoom() {
                     </button>
                     <button
                       onClick={() => handleControl('UNSOLD')}
-                      disabled={loading}
+                      disabled={loading || !!liveState?.highestBidderId}
                       className="flex-1 py-3 font-bold rounded-xl text-white bg-rose-600 hover:bg-rose-500 transition-all disabled:opacity-50"
                     >
                       3. Unsold

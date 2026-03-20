@@ -1,20 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
      const { action, playerId, basePrice, category } = await request.json();
 
-     // Initialize the state row if it somehow doesn't exist
+     // Initialize state if needed
      const stateExists = await prisma.auctionState.findUnique({ where: { id: "global" }});
      if (!stateExists) {
         await prisma.auctionState.create({ data: { id: "global", highestBid: 0 }});
      }
 
      if (action === "START") {
-        const timeLimitMs = 60000; // 60 seconds
         const state = await prisma.auctionState.update({
            where: { id: "global" },
            data: {
@@ -31,78 +28,94 @@ export async function POST(request: Request) {
      else if (action === "SELL") {
         const state = await prisma.auctionState.findUnique({ where: { id: "global" }});
         if (!state?.currentPlayerId) throw new Error("No player being auctioned");
-        if (!state.highestBidderId) throw new Error("No one bid on this player yet!");
+        if (!state.highestBidderId) throw new Error("No one bid yet!");
         
         const bidAmount = state.highestBid;
         const res = await prisma.$transaction(async (tx) => {
-           // 1. Deduct budget
+           const player = await tx.player.findUnique({ where: { id: state.currentPlayerId! }});
+           if (!player) throw new Error("Player not found");
+
            const team = await tx.user.findUnique({ where: { id: state.highestBidderId! }});
            if (!team || team.budget < bidAmount) throw new Error("Not enough budget");
+           
+           const isTeamAuction = player.role === "IPL TEAM";
+           
+           // Update User
            await tx.user.update({
               where: { id: team.id },
-              data: { budget: team.budget - bidAmount }
+              data: { 
+                budget: team.budget - bidAmount,
+                ...(isTeamAuction ? { iplTeam: player.name } : {})
+              }
            });
            
-           // 2. Assign player
+           // Update Player
            await tx.player.update({
               where: { id: state.currentPlayerId! },
               data: {
-                 userId: team.id,
+                 userId: isTeamAuction ? null : team.id,
                  auctionPrice: bidAmount,
                  acquisition: "Sold",
               }
            });
            
-           // 3. Transition to SUMMARY phase for the Ready-Check
+           // Transition
            await tx.auctionState.update({
               where: { id: "global" },
-              data: {
-                 status: "SUMMARY",
-                 readyTeams: ""
-              }
+              data: { status: "SUMMARY", readyTeams: "" }
            });
-           return true;
         });
         return NextResponse.json({ success: true });
      } 
      
      else if (action === "UNSOLD") {
-       // Mark player as unsold in database
-       const state = await prisma.auctionState.findUnique({ where: { id: "global" }});
-       if (state?.currentPlayerId) {
-          await prisma.player.update({
-             where: { id: state.currentPlayerId },
-             data: { acquisition: "Unsold" }
-          });
-       }
-
-       // Transition to SUMMARY phase for the Ready-Check
-       await prisma.auctionState.update({
-          where: { id: "global" },
-          data: { status: "SUMMARY", readyTeams: "" }
-       });
-       return NextResponse.json({ success: true });
+        const state = await prisma.auctionState.findUnique({ where: { id: "global" }});
+        if (state?.currentPlayerId) {
+           await prisma.player.update({
+              where: { id: state.currentPlayerId },
+              data: { acquisition: "Unsold" }
+           });
+        }
+        await prisma.auctionState.update({
+           where: { id: "global" },
+           data: { status: "SUMMARY", readyTeams: "" }
+        });
+        return NextResponse.json({ success: true });
      }
      
      else if (action === "START_AUTO_QUEUE") {
-       const { pushNextPlayer } = await import('@/lib/auctionEngine');
-       const pushed = await pushNextPlayer(category);
-       return NextResponse.json({ success: pushed });
+        const { pushNextPlayer } = await import('@/lib/auctionEngine');
+        const pushed = await pushNextPlayer(category);
+        return NextResponse.json({ success: pushed });
+     }
+
+     else if (action === "START_TEAM_QUEUE") {
+        const nextTeam = await prisma.player.findFirst({
+          where: { role: "IPL TEAM", acquisition: null },
+          orderBy: { name: 'asc' }
+        });
+        if (!nextTeam) throw new Error("No more IPL teams!");
+
+        await prisma.auctionState.update({
+          where: { id: "global" },
+          data: {
+            currentPlayerId: nextTeam.id,
+            highestBid: parseFloat(nextTeam.basePrice || "2.0"),
+            highestBidderId: null,
+            status: "BIDDING",
+            readyTeams: ""
+          }
+        });
+        return NextResponse.json({ success: true });
      }
      
      else if (action === "RESET_BID") {
        const state = await prisma.auctionState.findUnique({ where: { id: "global" }, include: { player: true } });
        if (state?.currentPlayerId) {
-         let base = 2.0;
-         if (state.player?.basePrice) {
-            base = parseFloat(state.player.basePrice.replace(/[^0-9.]/g, '')) || 2.0;
-         }
+         const base = state.player?.basePrice ? parseFloat(state.player.basePrice.replace(/[^0-9.]/g, '')) : 2.0;
          await prisma.auctionState.update({
             where: { id: "global" },
-            data: {
-               highestBid: base,
-               highestBidderId: null
-            }
+            data: { highestBid: base, highestBidderId: null }
          });
        }
        return NextResponse.json({ success: true });

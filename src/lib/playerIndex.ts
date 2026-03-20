@@ -53,31 +53,46 @@ export const FRANCHISE_LOGOS: Record<string, string> = {
 
 export interface PlayerInfo {
   image?: string;
-  age?: number;
   team?: string;
 }
 
 export const PLAYER_INFO: Record<string, PlayerInfo> = {
-  "Shreyas Iyer": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1563.png", age: 29, team: "KKR" },
-  "Rishabh Pant": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/2972.png", age: 26, team: "DC" },
-  "Mitchell Starc": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/137.png", age: 34, team: "KKR" },
-  "KL Rahul": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1125.png", age: 32, team: "LSG" },
-  "Jos Buttler": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/509.png", age: 33, team: "RR" },
-  "Ravichandran Ashwin": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/8.png", age: 37, team: "RR" },
-  "Kagiso Rabada": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/116.png", age: 29, team: "PBKS" },
-  "Mohammed Siraj": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/3840.png", age: 30, team: "RCB" },
-  "David Warner": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/170.png", age: 37, team: "DC" },
-  "Quinton De Kock": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/834.png", age: 31, team: "LSG" },
-  "Faf Du Plessis": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/24.png", age: 39, team: "RCB" },
-  "Trent Boult": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/969.png", age: 34, team: "RR" },
-  "Virat Kohli": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/164.png", age: 35, team: "RCB" },
-  "MS Dhoni": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1.png", age: 42, team: "CSK" },
-  "Rohit Sharma": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/107.png", age: 37, team: "MI" },
-  "Sherfane Rutherford": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/2881.png", age: 25, team: "KKR" }
+  "Shreyas Iyer": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1563.png", team: "PBKS" },
+  "Rishabh Pant": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/2972.png", team: "LSG" },
+  "Mitchell Starc": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/137.png", team: "DC" },
+  "KL Rahul": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1125.png", team: "DC" },
+  "Jos Buttler": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/509.png", team: "GT" },
+  "Ravichandran Ashwin": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/8.png", team: "RR" },
+  "Kagiso Rabada": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/116.png", team: "GT" },
+  "Mohammed Siraj": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/3840.png", team: "GT" },
+  "David Warner": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/170.png", team: "DC" },
+  "Quinton De Kock": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/834.png", team: "MI" },
+  "Faf Du Plessis": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/24.png", team: "RCB" },
+  "Trent Boult": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/969.png", team: "MI" },
+  "Virat Kohli": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/164.png", team: "RCB" },
+  "MS Dhoni": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1.png", team: "CSK" },
+  "Rohit Sharma": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/107.png", team: "MI" },
+  "Sherfane Rutherford": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/2881.png", team: "MI" }
 };
 
-export function getPlayerImage(name: string) {
+export function getPlayerImage(name: string, role?: string) {
+  // 1. Check hardcoded specific players
   if (PLAYER_INFO[name]?.image) return PLAYER_INFO[name].image;
+  
+  // 2. Check if it's an IPL Team (CSK, MI, etc.)
+  if (role === "IPL TEAM" || FRANCHISE_LOGOS[name]) {
+    return getFranchiseFlag(name);
+  }
+
+  // 3. Generic Role-based placeholders
+  if (role) {
+    const normalizedRole = role.toLowerCase();
+    if (normalizedRole.includes('batter') || normalizedRole.includes('batsman')) return "/generic_players/batsman.png";
+    if (normalizedRole.includes('bowler')) return "/generic_players/bowler.jpeg";
+    if (normalizedRole.includes('all-rounder') || normalizedRole.includes('allrounder')) return "/generic_players/allrounder.png";
+    if (normalizedRole.includes('wicket')) return "/generic_players/wicketkeeper.png";
+  }
+
   return "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png";
 }
 
@@ -87,16 +102,12 @@ export function getPlayerMeta(name: string) {
 
 export function getCountryFlag(country: string | null | undefined) {
   const resolvedCountry = country && country.trim() !== "" ? country : "India";
-  // Look up case-insensitive
   const found = Object.entries(COUNTRY_FLAGS).find(([key]) => key.toLowerCase() === resolvedCountry.toLowerCase());
   return found ? found[1] : null;
 }
 
 export function getFranchiseFlag(teamName: string) {
-  // If the user name perfectly matches an IPL team
   const found = Object.entries(FRANCHISE_LOGOS).find(([key]) => key.toLowerCase() === teamName.toLowerCase());
   if (found) return found[1];
-  
-  // Otherwise generic fallback avatar
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(teamName)}&background=1e1b4b&color=818cf8&size=128&bold=true`;
 }

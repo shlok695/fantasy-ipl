@@ -11,8 +11,11 @@ model User {
   id          String   @id @default(uuid())
   name        String   @unique
   password    String
-  budget      Float    @default(100.0) // 100 Cr default budget
+  budget      Float    @default(130.0) // 130 Cr default budget
   totalPoints Float    @default(0.0)
+  bonusPoints Float    @default(0.0) // For team win bonuses (+50 each)
+  iplTeam     String?  // Chosen IPL team for RTM and bonuses
+  rtmUsed     Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
@@ -28,6 +31,7 @@ model Player {
   acquisition  String?
   type         String?
   role         String?
+  iplTeam      String?
   basePrice    String?
   auctionPrice Float?
   createdAt    DateTime @default(now())

@@ -4,14 +4,60 @@ import { useEffect, useState } from 'react';
 import { Trophy, Users, UserPlus, Star, Target, Shield, Zap, Activity } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { getPlayerImage, getCountryFlag, getPlayerMeta, getFranchiseFlag } from '@/lib/playerIndex';
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTeamName, setNewTeamName] = useState('');
-  const [newTeamPassword, setNewTeamPassword] = useState('');
   const [newTeamBudget, setNewTeamBudget] = useState('100');
+  const [iplTeam, setIplTeam] = useState('');
+  const [isSelectingTeam, setIsSelectingTeam] = useState(false);
+
+  const IPL_TEAMS = ['CSK', 'DC', 'GT', 'KKR', 'LSG', 'MI', 'PBKS', 'RR', 'RCB', 'SRH'];
+
+  const handleSelectTeam = async (team: string) => {
+    try {
+      const res = await fetch('/api/user/select-team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ iplTeam: team })
+      });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        const data = await res.json();
+        alert(data.error);
+      }
+    } catch (e) {
+      alert("Failed to select team");
+    }
+  };
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState('');
+
+  const handleUpdateName = async () => {
+    if (!editedName || editedName.trim() === session?.user?.name) {
+      setIsEditingName(false);
+      return;
+    }
+    try {
+      const res = await fetch('/api/user/update-name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newName: editedName })
+      });
+      if (res.ok) {
+        window.location.reload(); // Refresh to update session
+      } else {
+        const data = await res.json();
+        alert(data.error);
+      }
+    } catch (e) {
+      alert("Failed to update name");
+    }
+  };
 
   const fetchTeams = async () => {
     try {
@@ -30,6 +76,8 @@ export default function Dashboard() {
     const interval = setInterval(fetchTeams, 5000); // Live update every 5 seconds
     return () => clearInterval(interval);
   }, []);
+
+  const myTeam = teams.find(t => t.id === (session?.user as any)?.id);
 
   if (loading || status === "loading") {
     return (
@@ -190,26 +238,67 @@ export default function Dashboard() {
         {/* ACTION CARDS */}
         <div className="space-y-6">
           {session ? (
-            <div className="glass-card p-6 border border-white/5 flex flex-col items-center justify-center text-center h-[200px] relative overflow-hidden bg-gradient-to-br from-indigo-500/10 to-transparent">
-              {topPlayer ? (
-                <>
-                  <div className="absolute -right-4 -top-4 opacity-10">
-                    <Star size={100} className="text-yellow-400" />
+            <div className="glass-card p-6 border border-white/5 flex flex-col items-center justify-center text-center min-h-[320px] relative overflow-hidden bg-gradient-to-br from-indigo-500/10 to-transparent">
+              <div className="absolute top-4 right-4 z-20">
+                <button 
+                  onClick={() => {
+                    setEditedName(session?.user?.name || '');
+                    setIsEditingName(!isEditingName);
+                  }}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                  title="Change Franchise Name"
+                >
+                  <Activity size={18} />
+                </button>
+              </div>
+
+              {isEditingName ? (
+                <div className="space-y-4 w-full px-4 py-4">
+                  <h3 className="text-sm font-bold uppercase tracking-widest text-indigo-400">Change Franchise Name</h3>
+                  <input 
+                    type="text" 
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    className="w-full bg-black/40 border border-indigo-500/30 rounded-lg px-3 py-2 text-white text-center focus:border-indigo-400 outline-none"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={handleUpdateName} className="flex-1 py-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg font-bold text-sm">Save</button>
+                    <button onClick={() => setIsEditingName(false)} className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-gray-400 rounded-lg font-bold text-sm">Cancel</button>
                   </div>
-                  <h3 className="text-sm font-bold tracking-widest uppercase text-emerald-400 mb-2 flex items-center gap-2">
-                    <Star size={16} /> Global High Score
-                  </h3>
-                  <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(topPlayer.name)}&background=random&color=fff&size=512&bold=true`} alt={topPlayer.name} className="w-16 h-16 rounded-full border-2 border-emerald-500/50 mb-3 shadow-lg" />
-                  <p className="font-black text-xl">{topPlayer.name}</p>
-                  <p className="text-sm text-gray-400 mb-1">Team: {topPlayer.user?.name}</p>
-                  <p className="text-2xl font-black text-white">{topPlayerPoints} PTS</p>
-                </>
+                </div>
               ) : (
-                <>
-                  <Trophy className="text-gray-500 mb-4" size={48} />
-                  <h3 className="text-xl font-bold mb-2">No Stats Yet</h3>
-                  <p className="text-gray-400 text-sm">Waiting for live match points to sync into the platform.</p>
-                </>
+                <div className="w-full space-y-6">
+                  <div className="flex gap-4">
+                    <div className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-1">Squad</p>
+                      <p className="text-xl font-black text-white">{myTeam?.players?.length || 0} <span className="text-[10px] opacity-40">/14</span></p>
+                    </div>
+                    <div className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-1">Partner</p>
+                      <p className="text-xl font-black text-indigo-400">{myTeam?.iplTeam || 'NONE'}</p>
+                    </div>
+                  </div>
+
+                  {topPlayer ? (
+                    <div className="pt-4 border-t border-white/5">
+                      <p className="text-xs text-gray-500 uppercase font-black mb-2 flex items-center justify-center gap-1">
+                        <Star size={12} className="text-yellow-400" /> MVP Leader
+                      </p>
+                      <div className="flex items-center gap-3 justify-center">
+                        <img src={getPlayerImage(topPlayer.name, topPlayer.role)} alt="MVP" className="w-10 h-10 rounded-full border border-emerald-500/30 object-cover bg-black" />
+                        <div className="text-left">
+                          <p className="font-bold text-sm truncate max-w-[120px]">{topPlayer.name}</p>
+                          <p className="text-[10px] text-emerald-400 font-mono">{topPlayer.totalPoints} PTS</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="pt-4 border-t border-white/5 text-gray-600 text-[10px] italic">
+                      Waiting for player points to sync...
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ) : (

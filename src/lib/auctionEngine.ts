@@ -2,16 +2,16 @@ import { prisma } from './prisma';
 
 export const AUCTION_SETS = [
   { type: 'Capped', role: 'Batter' },
-  { type: 'Capped', role: 'All-Rounder' },
+  { type: 'Capped', role: 'All-rounder' },
   { type: 'Capped', role: 'Wicketkeeper' },
   { type: 'Capped', role: 'Bowler' },
   { type: 'Uncapped', role: 'Batter' },
-  { type: 'Uncapped', role: 'All-Rounder' },
+  { type: 'Uncapped', role: 'All-rounder' },
   { type: 'Uncapped', role: 'Wicketkeeper' },
   { type: 'Uncapped', role: 'Bowler' },
   // Fallbacks for data inconsistencies
   { type: 'Overseas', role: 'Batter' },
-  { type: 'Overseas', role: 'All-Rounder' },
+  { type: 'Overseas', role: 'All-rounder' },
   { type: 'Overseas', role: 'Wicketkeeper' },
   { type: 'Overseas', role: 'Bowler' },
 ];
@@ -20,6 +20,7 @@ export async function pushNextPlayer(explicitSet?: { type: string, role: string 
   // 1. Find all completely untouched players
   const untouched = await prisma.player.findMany({
     where: {
+      userId: null,
       acquisition: null
     }
   });

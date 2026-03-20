@@ -13,11 +13,11 @@ export async function GET(req: Request) {
     
     const playerEntry = searchData?.results?.[0]?.contents?.[0];
     if (!playerEntry || playerEntry.type !== 'player') {
-       return NextResponse.json({ image: null, age: null, iplTeam: null });
+       return NextResponse.json({ image: null, iplTeam: null });
     }
 
     const espnUrl = (playerEntry.link?.web || playerEntry.link?.url);
-    if (!espnUrl) return NextResponse.json({ image: null, age: null, iplTeam: null });
+    if (!espnUrl) return NextResponse.json({ image: null, iplTeam: null });
 
     const bustUrl = espnUrl.includes('?') ? `${espnUrl}&t=${Date.now()}` : `${espnUrl}?t=${Date.now()}`;
 
@@ -36,8 +36,6 @@ export async function GET(req: Request) {
     let image = imgMatch ? imgMatch[1] : null;
     if (image?.includes('fallback') || image?.includes('default')) image = null;
 
-    const ageMatch = html.match(/(\d{2})y/i) || html.match(/(\d{2}) years/i);
-    const age = ageMatch ? parseInt(ageMatch[1]) : null;
 
     const knownTeams = ["Chennai Super Kings", "Mumbai Indians", "Royal Challengers Bengaluru", "Royal Challengers Bangalore", "Kolkata Knight Riders", "Delhi Capitals", "Rajasthan Royals", "Punjab Kings", "Sunrisers Hyderabad", "Lucknow Super Giants", "Gujarat Titans"];
     let iplTeam: string | null = null;
@@ -85,7 +83,7 @@ export async function GET(req: Request) {
       } catch(e) {}
     }
 
-    return NextResponse.json({ image, age, iplTeam });
+    return NextResponse.json({ image, iplTeam });
   } catch(e: any) {
     return NextResponse.json({ error: String(e), trace: e?.stack });
   }
