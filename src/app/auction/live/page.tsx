@@ -13,6 +13,7 @@ export default function LiveAuctionRoom() {
   const [teams, setTeams] = useState<any[]>([]);
   const [hasPassedId, setHasPassedId] = useState<string>('');
   const [dynamicMeta, setDynamicMeta] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
 
   const player = liveState?.player;
 
@@ -20,7 +21,7 @@ export default function LiveAuctionRoom() {
     if (player?.name) {
       setDynamicMeta(null);
       const localMeta = getPlayerMeta(player.name);
-      if (localMeta.image && localMeta.age && localMeta.team) {
+      if (localMeta.image && localMeta.team) {
          setDynamicMeta(localMeta);
          return;
       }
@@ -30,7 +31,6 @@ export default function LiveAuctionRoom() {
         .then(data => {
            setDynamicMeta({
              image: localMeta.image || data.image,
-             age: localMeta.age || data.age,
              team: localMeta.team || data.iplTeam
            });
         })
@@ -57,12 +57,26 @@ export default function LiveAuctionRoom() {
     } catch(e) {}
   };
 
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/auction/stats');
+      const data = await res.json();
+      setStats(data);
+    } catch (e) {}
+  };
+
   useEffect(() => {
     fetchLiveState();
     fetchTeams();
+    fetchStats();
     const intervalLive = setInterval(fetchLiveState, 1000);
     const intervalTeams = setInterval(fetchTeams, 3000);
-    return () => { clearInterval(intervalLive); clearInterval(intervalTeams); };
+    const intervalStats = setInterval(fetchStats, 5000);
+    return () => { 
+      clearInterval(intervalLive); 
+      clearInterval(intervalTeams); 
+      clearInterval(intervalStats);
+    };
   }, []);
 
   const placeBid = async (amount: number) => {
@@ -110,6 +124,22 @@ export default function LiveAuctionRoom() {
   const readyTeamsArr = liveState.readyTeams ? liveState.readyTeams.split(',') : [];
   const hasReadied = (session?.user as any)?.id && readyTeamsArr.includes((session?.user as any)?.id);
 
+  const myTeam = teams.find(t => t.id === (session?.user as any)?.id);
+  const canRTM = isAuctionActive && 
+                 myTeam && 
+                 !myTeam.rtmUsed && 
+                 player?.iplTeam === myTeam.iplTeam && 
+                 liveState.highestBidderId && 
+                 liveState.highestBidderId !== myTeam.id;
+
+  const handleRTM = async () => {
+    try {
+      const res = await fetch('/api/auction/rtm', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) alert(data.error);
+    } catch (e) { alert("RTM Failed"); }
+  };
+
   // Default increments
   const currentHighest = liveState.highestBid || 0;
   const minimumNextBid = currentHighest === 0 ? parseFloat(player?.basePrice?.replace(/[^0-9.]/g, '') || "2.0") : currentHighest + 0.2;
@@ -156,11 +186,75 @@ export default function LiveAuctionRoom() {
         {/* MAIN STAGE (col-span-3) */}
         <div className="lg:col-span-3 space-y-6">
           {!player ? (
-            <div className="glass-card h-[50vh] flex flex-col items-center justify-center text-gray-500 p-8 border-dashed border-2 border-white/10 relative overflow-hidden">
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-black to-black opacity-50"></div>
-              <UserX size={80} className="mb-6 opacity-30 relative z-10" />
-              <h2 className="text-3xl font-black text-white/50 mb-2 relative z-10">Waiting for Auctioneer...</h2>
-              <p className="text-lg text-gray-400 relative z-10">The admin hasn't pushed the next player to the stage yet.</p>
+            <div className="space-y-6">
+              {/* DASHBOARD SUMMARY */}
+              {stats && (
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 animate-in slide-in-from-top duration-700">
+                  <div className="glass-card p-6 border-indigo-500/20 bg-indigo-500/5">
+                    <p className="text-xs font-bold text-indigo-300 uppercase tracking-widest mb-1">Total</p>
+                    <p className="text-4xl font-black text-white">{stats.totalRemaining}</p>
+                  </div>
+                  <div className="glass-card p-6 border-emerald-500/20 bg-emerald-500/5">
+                    <p className="text-xs font-bold text-emerald-300 uppercase tracking-widest mb-1">Batters</p>
+                    <p className="text-4xl font-black text-white">{stats.roles.Batter}</p>
+                  </div>
+                  <div className="glass-card p-6 border-blue-500/20 bg-blue-500/5">
+                    <p className="text-xs font-bold text-blue-300 uppercase tracking-widest mb-1">Bowlers</p>
+                    <p className="text-4xl font-black text-white">{stats.roles.Bowler}</p>
+                  </div>
+                  <div className="glass-card p-6 border-amber-500/20 bg-amber-500/5">
+                    <p className="text-xs font-bold text-amber-300 uppercase tracking-widest mb-1">All-Rounders</p>
+                    <p className="text-4xl font-black text-white">{stats.roles['All-Rounder']}</p>
+                  </div>
+                  <div className="glass-card p-6 border-rose-500/20 bg-rose-500/5">
+                    <p className="text-xs font-bold text-rose-300 uppercase tracking-widest mb-1">Wicketkeepers</p>
+                    <p className="text-4xl font-black text-white">{stats.roles.Wicketkeeper}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="glass-card h-[40vh] flex flex-col items-center justify-center text-gray-500 p-8 border-dashed border-2 border-white/10 relative overflow-hidden">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-black to-black opacity-50"></div>
+                <UserX size={80} className="mb-6 opacity-30 relative z-10" />
+                <h2 className="text-3xl font-black text-white/50 mb-2 relative z-10">Waiting for Auctioneer...</h2>
+                <p className="text-lg text-gray-400 relative z-10 mb-8">The admin hasn't pushed the next player to the stage yet.</p>
+                
+                {session?.user?.name === 'admin' && (
+                  <button 
+                    onClick={async () => {
+                      const res = await fetch('/api/auction/control', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'START_AUTO_QUEUE' })
+                      });
+                      if (!res.ok) alert("Failed to start auction");
+                    }}
+                    className="relative z-10 px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-400 hover:to-blue-400 text-white font-black text-xl shadow-2xl shadow-indigo-500/40 transition-all hover:scale-105 active:scale-95 animate-pulse"
+                  >
+                    START AUTOMATED LIVE 🚀
+                  </button>
+                )}
+              </div>
+
+              {/* COUNTRY BREAKDOWN */}
+              {stats && (
+                <div className="glass-card p-6 animate-in slide-in-from-bottom duration-700">
+                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <Zap size={16} className="text-indigo-400" /> Availability by Nationality
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {Object.entries(stats.countries).sort((a: any, b: any) => b[1] - a[1]).map(([country, count]: any) => (
+                      <div key={country} className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/5">
+                        <img src={getCountryFlag(country)!} className="w-8 h-6 object-cover rounded shadow" alt={country} />
+                        <div>
+                          <p className="text-xs text-gray-400 font-bold truncate max-w-[80px]">{country}</p>
+                          <p className="text-lg font-black text-white">{count}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className={`glass-card p-0 overflow-hidden relative transition-all duration-700 ${isAuctionEnded ? (liveState.highestBidderId ? 'border-amber-500 shadow-[0_0_50px_-12px_rgba(245,158,11,0.5)]' : 'border-gray-500 shadow-[0_0_50px_-12px_rgba(107,114,128,0.5)]') : 'border-indigo-500/30'}`}>
@@ -178,7 +272,7 @@ export default function LiveAuctionRoom() {
                     </div>
                   )}
                   <img
-                    src={dynamicMeta?.image || getPlayerImage(player.name)}
+                    src={dynamicMeta?.image || getPlayerImage(player.name, player.role)}
                     alt={player.name}
                     className="w-48 h-48 rounded-3xl border-4 border-white/10 shadow-2xl relative z-10 object-cover bg-black"
                   />
@@ -200,11 +294,6 @@ export default function LiveAuctionRoom() {
                     <span className="bg-indigo-500/20 text-indigo-300 font-semibold px-3 py-1 rounded-full text-sm border border-indigo-500/30">
                       {player.role}
                     </span>
-                    {dynamicMeta?.age && (
-                      <span className="bg-amber-500/20 text-amber-300 font-semibold px-3 py-1 rounded-full text-sm border border-amber-500/30">
-                        Age: {dynamicMeta.age}
-                      </span>
-                    )}
                     {dynamicMeta?.team && (
                       <span className="bg-white/10 text-white font-bold px-3 py-1 rounded-full text-sm border border-white/20 flex items-center gap-1.5">
                         <img src={getFranchiseFlag(dynamicMeta.team)} alt={dynamicMeta.team} className="w-4 h-4 rounded-full object-cover bg-white" />
@@ -246,22 +335,36 @@ export default function LiveAuctionRoom() {
                       {liveState.highestBidderId ? 'SOLD!' : 'UNSOLD'}
                     </h3>
                     
-                    {session?.user?.name !== 'admin' && (
-                      <div className="mt-6">
-                        {hasReadied ? (
-                           <div className="py-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-bold animate-pulse">
-                             Waiting for other franchises... ({readyTeamsArr.length})
-                           </div>
-                        ) : (
-                           <button 
-                             onClick={markReady}
-                             className="w-full py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-black text-xl shadow-lg shadow-emerald-500/25 transition-all outline-none"
-                           >
-                             READY FOR NEXT ROUND ✅
-                           </button>
-                        )}
-                      </div>
-                    )}
+                    <div className="mt-6 flex flex-col gap-3">
+                      {session?.user?.name === 'admin' && (
+                        <button 
+                          onClick={async () => {
+                            const res = await fetch('/api/auction/control', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'START_AUTO_QUEUE' })
+                            });
+                            if (!res.ok) alert("Failed to push next player");
+                          }}
+                          className="w-full py-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-white font-black text-xl shadow-lg shadow-amber-500/25 transition-all outline-none"
+                        >
+                          AUTOMATED LIVE (NEXT) 🚀
+                        </button>
+                      )}
+
+                      {hasReadied ? (
+                         <div className="py-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-bold animate-pulse text-center">
+                           Waiting for other franchises... ({readyTeamsArr.length})
+                         </div>
+                      ) : (
+                         <button 
+                           onClick={markReady}
+                           className="w-full py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-black text-xl shadow-lg shadow-emerald-500/25 transition-all outline-none"
+                         >
+                           READY FOR NEXT ROUND ✅
+                         </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -296,14 +399,24 @@ export default function LiveAuctionRoom() {
                         type="number" step="0.1" min={minimumNextBid}
                         value={customBid} onChange={(e) => setCustomBid(e.target.value)}
                         placeholder={`Min: ${minimumNextBid.toFixed(2)}`}
-                        className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-lg"
+                        disabled={isBidding || !session || hasPassedId === player.id}
+                        className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-lg disabled:opacity-50"
                       />
-                      <button type="submit" disabled={isBidding || !session} className="px-6 py-3 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl transition-all shadow-lg disabled:opacity-50">
+                      <button type="submit" disabled={isBidding || !session || hasPassedId === player.id} className="px-6 py-3 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl transition-all shadow-lg disabled:opacity-50">
                         Custom
                       </button>
                     </form>
 
-                    {session?.user?.name !== 'admin' && hasPassedId !== player.id && (
+                    {canRTM && (
+                      <button 
+                        onClick={handleRTM}
+                        className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-black text-xl rounded-2xl shadow-xl shadow-amber-500/25 animate-pulse transition-all active:scale-[0.98]"
+                      >
+                        ⚡ RTM MATCH BID ₹{liveState.highestBid.toFixed(2)} Cr
+                      </button>
+                    )}
+
+                    {hasPassedId !== player.id && (
                       <button 
                         onClick={() => setHasPassedId(player.id)}
                         className="w-full py-4 text-gray-500 hover:text-gray-300 font-bold uppercase tracking-widest text-sm bg-white/5 hover:bg-white/10 rounded-2xl transition-all outline-none"

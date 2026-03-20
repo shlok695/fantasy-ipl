@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "reprice": "node scripts/reprice-base-prices.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
