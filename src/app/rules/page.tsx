@@ -2,18 +2,18 @@ import { HelpCircle, Star, Target, Shield, Zap } from 'lucide-react';
 
 export default function RulesPage() {
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
-      <div className="flex justify-center flex-col items-center gap-4 border-b border-white/10 pb-8 pt-4">
-        <div className="p-4 bg-teal-500/20 rounded-full text-teal-400 mb-2">
-          <HelpCircle size={48} />
+    <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12 px-4 sm:px-0">
+      <div className="flex justify-center flex-col items-center gap-3 sm:gap-4 border-b border-white/10 pb-6 sm:pb-8 pt-2 sm:pt-4">
+        <div className="p-2.5 sm:p-4 bg-teal-500/20 rounded-full text-teal-400 mb-1 sm:mb-2">
+          <HelpCircle size={32} className="sm:w-12 sm:h-12" />
         </div>
-        <h1 className="text-4xl font-black text-white text-center">Fantasy Points System</h1>
-        <p className="text-gray-400 text-center max-w-2xl">
+        <h1 className="text-2xl sm:text-4xl font-black text-white text-center">Fantasy Points System</h1>
+        <p className="text-sm sm:text-base text-gray-400 text-center max-w-2xl px-2">
           Here is exactly how players earn points for your franchise during live matches. We strictly follow the standard T20 Fantasy Points ruleset.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
         {/* BATTING */}
         <div className="glass-card p-6 border border-white/5">
           <h2 className="text-2xl font-bold flex items-center gap-3 mb-6 text-rose-400">

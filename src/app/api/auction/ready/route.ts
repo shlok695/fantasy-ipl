@@ -7,7 +7,7 @@ import { pushNextPlayer } from "@/lib/auctionEngine";
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   
-  if (!(session?.user as any)?.id) {
+  if (!session || !session.user || !(session.user as any).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -24,17 +24,26 @@ export async function POST(request: Request) {
       readyTeams.push((session.user as any).id);
     }
 
-    // Count active participating franchises (exclude 'admin')
+    // Count active participating franchises (exclude 'admin' and only those active in the last 30s)
+    const thirtySecondsAgo = new Date(Date.now() - 30000);
     const activeTeams = await prisma.user.count({ 
-      where: { name: { not: "admin" } } 
+      where: { 
+        name: { not: "admin" },
+        lastActive: { gte: thirtySecondsAgo }
+      } 
     });
 
     // If no teams exist, or everyone is ready, push next!
     if (activeTeams === 0 || readyTeams.length >= activeTeams) {
+      console.log(`[Consensus Reached] ${readyTeams.length}/${activeTeams} ready. Pushing next player...`);
       await pushNextPlayer();
       return NextResponse.json({ autoPushed: true });
     } else {
-      // Just save the accumulated ready state
+      // Find who is missing for admin visibility if needed
+      const allUsers = await prisma.user.findMany({ where: { name: { not: "admin" } } });
+      const missing = allUsers.filter(u => !readyTeams.includes(u.id)).map(u => u.name);
+      console.log(`[Consensus Progress] ${readyTeams.length}/${activeTeams} ready. Missing: ${missing.join(', ')}`);
+
       await prisma.auctionState.update({
          where: { id: "global" },
          data: { readyTeams: readyTeams.join(',') }
