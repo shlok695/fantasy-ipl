@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,25 +28,25 @@ export default function LoginPage() {
       setError(res.error);
       setLoading(false);
     } else {
-      router.push("/");
+      router.push('/');
       router.refresh();
     }
   };
 
   return (
-    <div className="flex flex-col justify-center items-center h-[70vh] animate-in fade-in slide-in-from-bottom-4">
-      <div className="glass-card p-8 w-full max-w-md border border-indigo-500/20 shadow-2xl">
-        <div className="flex justify-center mb-6">
-          <div className="p-4 bg-indigo-500/20 rounded-full text-indigo-400">
-            <Lock size={32} />
+    <div className="flex flex-col justify-center items-center min-h-[60vh] py-8 sm:py-12 animate-in fade-in slide-in-from-bottom-4">
+      <div className="glass-card p-6 sm:p-8 w-full max-w-md border border-indigo-500/20 shadow-2xl">
+        <div className="flex justify-center mb-4 sm:mb-6">
+          <div className="p-3 sm:p-4 bg-indigo-500/20 rounded-full text-indigo-400">
+            <Lock size={28} className="sm:w-8 sm:h-8" />
           </div>
         </div>
         
-        <h2 className="text-3xl font-black text-center mb-2">Team Login</h2>
-        <p className="text-gray-400 text-center mb-8">Sign in to manage your franchise bids and points.</p>
+        <h2 className="text-2xl sm:text-3xl font-black text-center mb-2">Team Login</h2>
+        <p className="text-sm sm:text-base text-gray-400 text-center mb-6 sm:mb-8">Sign in to manage your franchise bids and points.</p>
 
         {error && (
-          <div className="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-lg mb-6 text-sm text-center">
+          <div className="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-2.5 rounded-lg mb-6 text-xs sm:text-sm text-center">
             {error}
           </div>
         )}
@@ -84,7 +85,9 @@ export default function LoginPage() {
           </button>
 
           <p className="text-center text-gray-400 text-sm mt-4">
-            Don't have a team yet? <a href="/signup" className="text-indigo-400 hover:underline">Register here</a>
+            Don't have a team yet? <Link href="/signup" className="text-indigo-400 font-bold hover:underline">
+              Create one
+            </Link>
           </p>
         </form>
       </div>

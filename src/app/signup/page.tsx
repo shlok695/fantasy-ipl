@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserPlus, Lock } from "lucide-react";
+import Link from "next/link";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -18,13 +19,13 @@ export default function SignupPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/teams", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/teams`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           name: newTeamName, 
           password: newTeamPassword, 
-          budget: 100 // Default to 100 as the input field is removed
+          budget: 125 // Default to 125 as the input field is removed
         })
       });
 
@@ -33,7 +34,7 @@ export default function SignupPage() {
         throw new Error(data.error || "Failed to create franchise");
       }
 
-      router.push("/login?registered=true");
+      router.push('/login?registered=true');
     } catch (err: any) {
       setError(err.message);
       setLoading(false);
@@ -41,19 +42,19 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="flex flex-col justify-center items-center py-12 animate-in fade-in slide-in-from-bottom-4">
-      <div className="glass-card p-8 w-full max-w-lg border border-indigo-500/20 shadow-2xl">
-        <div className="flex justify-center mb-6">
-          <div className="p-4 bg-teal-500/20 rounded-full text-teal-400">
-            <UserPlus size={32} />
+    <div className="flex flex-col justify-center items-center py-6 sm:py-12 animate-in fade-in slide-in-from-bottom-4">
+      <div className="glass-card p-6 sm:p-8 w-full max-w-lg border border-indigo-500/20 shadow-2xl">
+        <div className="flex justify-center mb-4 sm:mb-6">
+          <div className="p-3 sm:p-4 bg-teal-500/20 rounded-full text-teal-400">
+            <UserPlus size={28} className="sm:w-8 sm:h-8" />
           </div>
         </div>
         
-        <h2 className="text-3xl font-black text-center mb-2">Create Franchise</h2>
-        <p className="text-gray-400 text-center mb-8">Register a new team for the auction.</p>
+        <h2 className="text-2xl sm:text-3xl font-black text-center mb-2">Create Franchise</h2>
+        <p className="text-sm sm:text-base text-gray-400 text-center mb-6 sm:mb-8">Register a new team for the auction.</p>
 
         {error && (
-          <div className="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-lg mb-6 text-sm text-center">
+          <div className="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-2.5 rounded-lg mb-6 text-xs sm:text-sm text-center">
             {error}
           </div>
         )}
@@ -87,8 +88,6 @@ export default function SignupPage() {
             <p className="text-xs text-gray-500 mt-1">You will use this to login to your team during the auction.</p>
           </div>
 
-
-
           <button 
             type="submit"
             disabled={loading}
@@ -98,7 +97,10 @@ export default function SignupPage() {
           </button>
 
           <p className="text-center text-gray-400 text-sm mt-4">
-            Already have a team? <a href="/login" className="text-teal-400 hover:underline">Login here</a>
+            Already have a team? 
+            <Link href="/login" className="text-indigo-400 font-bold hover:underline">
+              Log in instead
+            </Link>
           </p>
         </form>
       </div>

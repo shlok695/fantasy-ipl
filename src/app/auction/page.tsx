@@ -1,16 +1,21 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Search, Gavel, UserCheck, UserX, Activity } from 'lucide-react';
+import { Search, Gavel, UserCheck, UserX, Activity, ListChecks } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { getPlayerImage, getCountryFlag, getPlayerMeta, getFranchiseFlag } from '@/lib/playerIndex';
+import Link from 'next/link';
 
 export default function AuctionRoom() {
+  const { data: session } = useSession();
   const [players, setPlayers] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'upcoming' | 'passed'>('upcoming');
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
   const [dynamicMeta, setDynamicMeta] = useState<any>(null);
+
+  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/"/g, '');
 
   useEffect(() => {
     if (selectedPlayer?.name) {
@@ -21,7 +26,7 @@ export default function AuctionRoom() {
          return;
       }
       
-      fetch(`/api/player-info?name=${encodeURIComponent(selectedPlayer.name)}`)
+      fetch(`${basePath}/api/player-info?name=${encodeURIComponent(selectedPlayer.name)}`)
         .then(res => res.json())
         .then(data => {
            setDynamicMeta({
@@ -59,7 +64,7 @@ export default function AuctionRoom() {
   useEffect(() => {
     const snapLive = async () => {
       try {
-        const res = await fetch('/api/auction/live');
+        const res = await fetch(`${basePath}/api/auction/live`);
         const data = await res.json();
         if (data.state) setLiveState(data.state);
       } catch(e) {}
@@ -78,7 +83,7 @@ export default function AuctionRoom() {
 
   const fetchPlayersList = async () => {
     try {
-      const res = await fetch(`/api/players?status=${activeTab}&q=${searchTerm}`);
+      const res = await fetch(`${basePath}/api/players?status=${activeTab}&q=${searchTerm}`);
       const data = await res.json();
       setPlayers(data);
     } catch (e) {
@@ -88,7 +93,7 @@ export default function AuctionRoom() {
 
   const fetchTeams = async () => {
     try {
-      const res = await fetch('/api/teams');
+      const res = await fetch(`${basePath}/api/teams`);
       const data = await res.json();
       setTeams(data);
     } catch (e) { console.error(e); }
@@ -108,7 +113,7 @@ export default function AuctionRoom() {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/auction', {
+      const res = await fetch(`${basePath}/api/auction`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,6 +142,7 @@ export default function AuctionRoom() {
   };
 
   const handleControl = async (actionStr: string) => {
+    console.log("[Auction Admin] handleControl Action:", actionStr);
     setLoading(true);
     try {
       let explicitCat = undefined;
@@ -145,7 +151,9 @@ export default function AuctionRoom() {
         explicitCat = { type: t, role: r };
       }
 
-      const res = await fetch('/api/auction/control', {
+      const url = `${basePath}/api/auction/control`;
+      console.log("[Auction Admin] Fetching:", url);
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -156,8 +164,9 @@ export default function AuctionRoom() {
         })
       });
       const data = await res.json();
-      if (!res.ok) alert(data.error);
-      else {
+      if (!res.ok) {
+        alert("Failed: " + (data.error || res.statusText));
+      } else {
         alert(actionStr === "START" ? "Player pushed to Live Stage! Open /auction/live to watch." : "Action Successful!");
         if (actionStr === "SELL" || actionStr === "UNSOLD") {
            setSelectedPlayer(null);
@@ -165,28 +174,40 @@ export default function AuctionRoom() {
            fetchTeams();
         }
       }
+    } catch (e: any) {
+      console.error("[Auction Admin] Fetch Error:", e);
+      alert("Client-side error: " + e.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 px-4 sm:px-0">
       
-      <div className="flex items-center gap-4 border-b border-indigo-500/20 pb-4">
-        <div className="p-3 bg-indigo-500/20 rounded-xl text-indigo-400">
-          <Gavel size={32} />
+      <div className="flex items-center gap-3 sm:gap-4 border-b border-indigo-500/20 pb-4">
+        <div className="p-2.5 sm:p-3 bg-indigo-500/20 rounded-xl text-indigo-400">
+          <Gavel size={24} className="sm:w-8 sm:h-8" />
         </div>
-        <div>
-          <h1 className="text-3xl font-black text-white">Auction Room</h1>
-          <p className="text-gray-400">Assign unsold players to family teams.</p>
+        <div className="flex-1">
+          <h1 className="text-2xl sm:text-3xl font-black text-white">Auction Room</h1>
+          <p className="text-xs sm:text-sm text-gray-400">Assign unsold players to family teams.</p>
         </div>
+        {session?.user?.name === 'admin' && (
+          <Link 
+            href="/admin/sold" 
+            className="flex items-center gap-2 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/50 rounded-xl px-4 py-2 text-sm font-bold transition-all shadow-lg shadow-emerald-500/10"
+          >
+            <ListChecks size={18} />
+            <span className="hidden sm:inline">View Sold Items</span>
+          </Link>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
         
         {/* PLAYER LIST */}
-        <div className="lg:col-span-1 glass-card p-4 h-[70vh] flex flex-col">
+        <div className="lg:col-span-1 glass-card p-4 h-auto lg:h-[70vh] max-h-[50vh] lg:max-h-none flex flex-col">
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input 
@@ -279,33 +300,36 @@ export default function AuctionRoom() {
         {/* AUCTION PANEL */}
         <div className="lg:col-span-2">
           {selectedPlayer ? (
-            <div className="glass-card p-8 space-y-8 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-                <UserCheck size={200} />
+            <div className="glass-card p-5 sm:p-8 space-y-6 sm:space-y-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+                <UserCheck size={160} className="sm:w-[200px]" />
               </div>
 
-              <div className="flex items-center gap-6">
-                <div className="relative">
-                  <img src={dynamicMeta?.image || getPlayerImage(selectedPlayer.name, selectedPlayer.role)} alt={selectedPlayer.name} className="w-32 h-32 rounded-3xl border-4 border-white/10 shadow-2xl hover:scale-105 transition-transform object-cover bg-black" />
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 text-center sm:text-left">
+                <div className="relative shrink-0">
+                  <img src={dynamicMeta?.image || getPlayerImage(selectedPlayer.name, selectedPlayer.role)} alt={selectedPlayer.name} className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white/10 shadow-2xl transition-transform object-cover bg-black" />
                   {getCountryFlag(selectedPlayer.country) && (
-                    <img src={getCountryFlag(selectedPlayer.country)!} alt={selectedPlayer.country || "India"} className="absolute -bottom-3 -right-3 w-10 h-7 object-cover rounded-md shadow-lg border border-white/20 z-20" />
+                    <img src={getCountryFlag(selectedPlayer.country)!} alt={selectedPlayer.country || "India"} className="absolute -bottom-2 -right-1 sm:-bottom-3 sm:-right-3 w-8 h-6 sm:w-10 sm:h-7 object-cover rounded shadow-lg border border-white/20 z-20" />
                   )}
                   {dynamicMeta?.team && (
-                    <img src={getFranchiseFlag(dynamicMeta.team)} alt={dynamicMeta.team} className="absolute -top-3 -left-3 w-12 h-12 object-cover rounded-full shadow-xl border-2 border-white/20 z-20 bg-white" />
+                    <img src={getFranchiseFlag(dynamicMeta.team)} alt={dynamicMeta.team} className="absolute -top-2 -left-2 sm:-top-3 sm:-left-3 w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-full shadow-xl border-2 border-white/20 z-20 bg-white" />
                   )}
                 </div>
-                <div>
-                  <h2 className="text-4xl font-black mb-2">{selectedPlayer.name} {selectedPlayer.country && <span className="text-2xl font-normal text-gray-400">({selectedPlayer.country})</span>}</h2>
-                  <div className="flex gap-3 flex-wrap">
-                    <span className="bg-indigo-500/20 text-indigo-300 font-semibold px-3 py-1 rounded-full text-sm border border-indigo-500/30">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-2xl sm:text-4xl font-black mb-2 truncate">
+                    {selectedPlayer.name} 
+                    {selectedPlayer.country && <span className="text-sm sm:text-2xl font-normal text-gray-500 block sm:inline sm:ml-2">({selectedPlayer.country})</span>}
+                  </h2>
+                  <div className="flex justify-center sm:justify-start gap-2 sm:gap-3 flex-wrap">
+                    <span className="bg-indigo-500/20 text-indigo-300 font-semibold px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm border border-indigo-500/30">
                       {selectedPlayer.role}
                     </span>
-                    <span className="bg-rose-500/20 text-rose-300 font-semibold px-3 py-1 rounded-full text-sm border border-rose-500/30">
+                    <span className="bg-rose-500/20 text-rose-300 font-semibold px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm border border-rose-500/30">
                       {selectedPlayer.type}
                     </span>
                     {dynamicMeta?.team && (
-                      <span className="bg-white/10 text-white font-bold px-3 py-1 rounded-full text-sm border border-white/20 flex items-center gap-1.5">
-                        <img src={getFranchiseFlag(dynamicMeta.team)} alt={dynamicMeta.team} className="w-4 h-4 rounded-full object-cover bg-white" />
+                      <span className="bg-white/10 text-white font-bold px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm border border-white/20 flex items-center gap-1.5">
+                        <img src={getFranchiseFlag(dynamicMeta.team)} alt={dynamicMeta.team} className="w-3.5 h-3.5 rounded-full object-cover bg-white" />
                         {dynamicMeta.team}
                       </span>
                     )}
@@ -313,28 +337,28 @@ export default function AuctionRoom() {
                 </div>
               </div>
 
-              <div className="p-4 bg-black/30 rounded-xl border border-white/5 flex justify-between items-center">
+              <div className="p-4 bg-black/30 rounded-xl border border-white/5 flex justify-between items-center text-center sm:text-left">
                 <div>
-                  <p className="text-sm text-gray-400 uppercase tracking-wider">Base Price</p>
-                  <p className="font-mono text-2xl text-emerald-400">{selectedPlayer.basePrice?.replace(/\?/g, '₹') || '-'}</p>
+                  <p className="text-[10px] sm:text-sm text-gray-400 uppercase tracking-wider">Base Price</p>
+                  <p className="font-mono text-xl sm:text-2xl text-emerald-400">{selectedPlayer.basePrice?.replace(/\?/g, '₹') || '-'}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/10">
                 {/* LIVE ROOM CONTROLS */}
-                <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-6 space-y-4">
+                <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-5 sm:p-6 space-y-4">
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleControl('START_AUTO_QUEUE')}
                       disabled={loading}
-                      className="flex-1 py-3 font-bold rounded-xl text-white bg-amber-600 hover:bg-amber-500 shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+                      className="flex-1 py-3 text-sm sm:text-base font-bold rounded-xl text-white bg-amber-600 hover:bg-amber-500 shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
                     >
-                      Automated Live
+                      Auto Live
                     </button>
                     <button 
                        onClick={() => handleControl('RESET_BID')}
                        disabled={loading}
-                       className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all"
+                       className="flex-1 py-3 text-sm sm:text-base bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all"
                     >
                        Reset Bid
                     </button>
@@ -343,22 +367,22 @@ export default function AuctionRoom() {
                   <button
                     onClick={() => handleControl('START')}
                     disabled={loading}
-                    className="w-full py-3 font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/25 transition-all disabled:opacity-50"
+                    className="w-full py-3 text-sm sm:text-base font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/25 transition-all disabled:opacity-50"
                   >
-                    1. Force Inject into Live Stage
+                    1. Inject into Live
                   </button>
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleControl('SELL')}
                       disabled={loading}
-                      className="flex-1 py-3 font-bold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 transition-all disabled:opacity-50"
+                      className="flex-1 py-3 text-sm sm:text-base font-bold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 transition-all disabled:opacity-50"
                     >
                       2. Sell Highest
                     </button>
                     <button
                       onClick={() => handleControl('UNSOLD')}
                       disabled={loading || !!liveState?.highestBidderId}
-                      className="flex-1 py-3 font-bold rounded-xl text-white bg-rose-600 hover:bg-rose-500 transition-all disabled:opacity-50"
+                      className="flex-1 py-3 text-sm sm:text-base font-bold rounded-xl text-white bg-rose-600 hover:bg-rose-500 transition-all disabled:opacity-50"
                     >
                       3. Unsold
                     </button>
@@ -366,13 +390,13 @@ export default function AuctionRoom() {
                 </div>
 
                 {/* MANUAL OVERRIDE */}
-                <form onSubmit={handleSell} className="bg-black/30 border border-white/5 rounded-2xl p-6 space-y-4">
-                  <h3 className="font-bold text-gray-400 mb-2 flex items-center gap-2"><Gavel size={18}/> Manual Override</h3>
+                <form onSubmit={handleSell} className="bg-black/30 border border-white/5 rounded-2xl p-5 sm:p-6 space-y-4">
+                  <h3 className="font-bold text-gray-400 mb-1 flex items-center gap-2 text-sm sm:text-base"><Gavel size={18}/> Manual Override</h3>
                   <select
                     required
                     value={selectedTeamId}
                     onChange={(e) => setSelectedTeamId(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium appearance-none"
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium appearance-none"
                   >
                     <option value="">Select Team</option>
                     {teams.map(t => (
@@ -387,12 +411,12 @@ export default function AuctionRoom() {
                     value={bidAmount}
                     onChange={(e) => setBidAmount(e.target.value)}
                     placeholder="Winning Bid (e.g. 5.5)"
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                   />
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 font-bold rounded-xl text-white bg-white/10 hover:bg-white/20 transition-all disabled:opacity-50"
+                    className="w-full py-2.5 sm:py-3 font-bold rounded-xl text-sm sm:text-base text-white bg-white/10 hover:bg-white/20 transition-all disabled:opacity-50"
                   >
                     Assign Manually
                   </button>

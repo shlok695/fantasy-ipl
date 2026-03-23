@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth";
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || !(session.user as any)?.id) {
+    if (!session || !session.user || !(session.user as any).id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -34,13 +34,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No player on the stage." }, { status: 400 });
     }
 
-    // 1. Squad Size Validation (Max 14)
+    // 1. Squad Size Validation (Max 15)
     const squadCount = await prisma.player.count({
       where: { userId: teamId, NOT: { role: "IPL TEAM" } } as any
     });
     
-    if (squadCount >= 14) {
-      return NextResponse.json({ error: "Your squad is full (14 players max)!" }, { status: 400 });
+    if (squadCount >= 15) {
+      return NextResponse.json({ error: "Your squad is full (15 players max)!" }, { status: 400 });
     }
 
     // 3. Max Bid Constraint (Ensure they can reach 11 players)

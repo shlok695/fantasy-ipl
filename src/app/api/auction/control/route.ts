@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
-     const { action, playerId, basePrice, category } = await request.json();
+    const body = await request.json();
+    const { action, playerId, basePrice, category } = body;
+    console.log(`[Auction Control] Action: ${action}`, body);
 
      // Initialize state if needed
      const stateExists = await prisma.auctionState.findUnique({ where: { id: "global" }});
@@ -62,7 +66,7 @@ export async function POST(request: Request) {
            // Transition
            await tx.auctionState.update({
               where: { id: "global" },
-              data: { status: "SUMMARY", readyTeams: "" }
+              data: { status: "SUMMARY", readyTeams: "", updatedAt: new Date() }
            });
         });
         return NextResponse.json({ success: true });
@@ -85,8 +89,22 @@ export async function POST(request: Request) {
      
      else if (action === "START_AUTO_QUEUE") {
         const { pushNextPlayer } = await import('@/lib/auctionEngine');
+        console.log(`[Control] START_AUTO_QUEUE with category:`, category);
         const pushed = await pushNextPlayer(category);
-        return NextResponse.json({ success: pushed });
+        
+        if (!pushed) {
+          console.log(`[Control] pushNextPlayer returned false`);
+          return NextResponse.json({ success: false, message: "No players available to push" });
+        }
+        
+        // Fetch and return the full state with player data for immediate UI update
+        const updatedState = await prisma.auctionState.findUnique({
+          where: { id: "global" },
+          include: { player: true, highestBidder: true }
+        });
+        
+        console.log(`[Control] Successfully pushed player:`, updatedState?.player?.name);
+        return NextResponse.json({ success: true, state: updatedState });
      }
 
      else if (action === "START_TEAM_QUEUE") {

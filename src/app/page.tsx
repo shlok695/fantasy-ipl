@@ -10,6 +10,7 @@ export default function Dashboard() {
   const { data: session, status } = useSession();
   const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [debugMsg, setDebugMsg] = useState('Init');
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamBudget, setNewTeamBudget] = useState('100');
   const [iplTeam, setIplTeam] = useState('');
@@ -17,9 +18,11 @@ export default function Dashboard() {
 
   const IPL_TEAMS = ['CSK', 'DC', 'GT', 'KKR', 'LSG', 'MI', 'PBKS', 'RR', 'RCB', 'SRH'];
 
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
   const handleSelectTeam = async (team: string) => {
     try {
-      const res = await fetch('/api/user/select-team', {
+      const res = await fetch(`${basePath}/api/user/select-team`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ iplTeam: team })
@@ -43,7 +46,7 @@ export default function Dashboard() {
       return;
     }
     try {
-      const res = await fetch('/api/user/update-name', {
+      const res = await fetch(`${basePath}/api/user/update-name`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newName: editedName })
@@ -61,10 +64,17 @@ export default function Dashboard() {
 
   const fetchTeams = async () => {
     try {
-      const res = await fetch('/api/teams');
+      setDebugMsg('Starting fetch...');
+      const url = `${basePath}/api/teams`;
+      setDebugMsg(`Fetching ${url}...`);
+      const res = await fetch(url, { cache: 'no-store' });
+      setDebugMsg(`Fetched! Status: ${res.status}`);
       const data = await res.json();
+      setDebugMsg(`Parsed JSON. Setting Teams...`);
       setTeams(data);
-    } catch (e) {
+      setDebugMsg(`Done!`);
+    } catch (e: any) {
+      setDebugMsg(`Error: ${e.message}`);
       console.error(e);
     } finally {
       setLoading(false);
@@ -81,7 +91,7 @@ export default function Dashboard() {
 
   if (loading || status === "loading") {
     return (
-      <div className="flex justify-center items-center h-64">
+      <div className="flex justify-center items-center h-64 flex-col gap-4">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
       </div>
     );
@@ -138,11 +148,11 @@ export default function Dashboard() {
   return (
     <div className="space-y-12">
       {/* Header */}
-      <div className="text-center space-y-4 pt-10">
-        <h1 className="text-5xl md:text-6xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-br from-indigo-400 via-purple-400 to-rose-400 inline-block">
+      <div className="text-center space-y-4 pt-4 sm:pt-10">
+        <h1 className="text-3xl sm:text-5xl md:text-6xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-br from-indigo-400 via-purple-400 to-rose-400 inline-block px-4">
           Fantasy IPL Leaderboard
         </h1>
-        <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+        <p className="text-base sm:text-lg md:text-xl text-gray-400 max-w-2xl mx-auto px-4">
           The ultimate showdown. Build your squad, manage your budget, and track live points.
         </p>
       </div>
@@ -165,64 +175,116 @@ export default function Dashboard() {
                 {teams.map((team, idx) => (
                   <div key={team.id} className="glass p-4 rounded-xl flex flex-col gap-4 hover-glow group transition-all">
                     
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4 w-full sm:w-auto">
+                        <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg
                           ${idx === 0 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' : 
                             idx === 1 ? 'bg-slate-300/20 text-slate-300 border border-slate-300/50' :
                             idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/50' :
                             'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'}`}>
                           {idx + 1}
                         </div>
-                        <div>
-                          <h3 className="font-bold text-xl">{team.name}</h3>
-                          <p className="text-sm text-gray-400 flex items-center gap-1">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg sm:text-xl truncate flex items-center gap-2">
+                            {team.name}
+                            {team.iplTeam && (
+                              <span className="text-[10px] sm:text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30">
+                                {team.iplTeam}
+                              </span>
+                            )}
+                            {session?.user?.name === 'admin' && (
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`Are you absolutely sure you want to permanently delete the franchise '${team.name}'? All their players will be released. This cannot be undone.`)) {
+                                    try {
+                                      const res = await fetch(`${basePath}/api/teams/remove`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ teamId: team.id })
+                                      });
+                                      if (res.ok) window.location.reload();
+                                      else alert((await res.json()).error);
+                                    } catch(e) { alert("Failed to delete franchise"); }
+                                  }
+                                }}
+                                className="ml-2 bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/50 rounded px-2 py-0.5 text-[10px] sm:text-xs font-bold transition-all"
+                                title={`Delete ${team.name}`}
+                              >
+                                Delete Team
+                              </button>
+                            )}
+                          </h3>
+                          <p className="text-xs sm:text-sm text-gray-400 flex items-center gap-1">
                             <Users size={14} /> {team.players?.length || 0} Players
                           </p>
                         </div>
                       </div>
                       
-                      <div className="text-right flex items-center gap-8">
-                        <div>
-                          <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Budget</p>
+                      <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4 sm:gap-8 bg-black/20 sm:bg-transparent p-3 sm:p-0 rounded-lg">
+                        <div className="text-left sm:text-right">
+                          <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider font-semibold">Budget</p>
                         {session?.user?.name === 'admin' ? (
-                          <div className="flex items-center gap-1 font-mono text-emerald-400">
+                          <div className="flex items-center justify-start sm:justify-end gap-1 font-mono text-emerald-400">
                             ₹
                             <input
                               type="number"
+                              key={team.budget}
                               defaultValue={team.budget}
                               onBlur={async (e) => {
                                 const val = parseFloat(e.target.value);
-                                if (!isNaN(val)) {
-                                  await fetch('/api/teams/budget', { 
+                                if (!isNaN(val) && val !== team.budget) {
+                                  await fetch(`${basePath}/api/teams/budget`, { 
                                     method: 'POST', 
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ teamId: team.id, newBudget: val }) 
                                   });
                                 }
                               }}
-                              className="w-16 bg-transparent border-b border-emerald-500/30 text-emerald-400 focus:outline-none focus:border-emerald-400 text-right font-bold"
+                              className="w-16 bg-transparent border-b border-emerald-500/30 text-emerald-400 focus:outline-none focus:border-emerald-400 text-left sm:text-right font-bold"
                             />
                             Cr
                           </div>
                         ) : (
-                          <p className="font-mono text-emerald-400 font-bold">₹{team.budget.toFixed(1)} Cr</p>
+                          <p className="font-mono text-emerald-400 font-bold text-sm sm:text-base">₹{team.budget.toFixed(1)} Cr</p>
                         )}
-                      </div>
-                        <div className="bg-indigo-500/20 px-4 py-2 rounded-lg border border-indigo-500/30 text-center min-w-[100px]">
-                          <p className="text-xs text-indigo-300 uppercase tracking-wider font-semibold">Points</p>
-                          <p className="font-black text-2xl text-white">{team.totalPoints}</p>
+                        </div>
+                        <div className="bg-indigo-500/20 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg border border-indigo-500/30 text-center min-w-[80px] sm:min-w-[100px]">
+                          <p className="text-[10px] sm:text-xs text-indigo-300 uppercase tracking-wider font-semibold">Points</p>
+                          <p className="font-black text-xl sm:text-2xl text-white">{team.totalPoints}</p>
                         </div>
                       </div>
                     </div>
 
                     {/* SQUAD LIST */}
                     {team.players && team.players.length > 0 && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 pl-14">
+                      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:pl-14 pt-2 border-t border-white/5 sm:border-0 sm:pt-0 mt-2 sm:mt-0">
                         {team.players.map((p: any) => (
-                          <div key={p.id} className="bg-black/30 border border-white/5 rounded px-2 py-1 text-xs text-gray-400 flex justify-between items-center group-hover:border-white/10 transition-colors">
-                            <span className="truncate pr-1">{p.name}</span>
-                            <span className="text-indigo-400 font-bold">₹{p.auctionPrice.toFixed(1)}</span>
+                          <div key={p.id} className="bg-black/30 border border-white/5 rounded px-2 flex justify-between items-center group-hover:border-white/10 transition-colors h-8 group">
+                            <span className="truncate pr-2 text-[10px] sm:text-xs text-gray-300">{p.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] sm:text-xs text-indigo-400 font-bold whitespace-nowrap">₹{p.auctionPrice?.toFixed(1)}</span>
+                              {session?.user?.name === 'admin' && (
+                                <button
+                                  onClick={async () => {
+                                    if (confirm(`Are you sure you want to drop ${p.name} from ${team.name}? This will refund ₹${p.auctionPrice?.toFixed(1)} Cr.`)) {
+                                      try {
+                                        const res = await fetch(`${basePath}/api/auction/drop`, {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ playerId: p.id })
+                                        });
+                                        if (res.ok) fetchTeams();
+                                        else alert((await res.json()).error);
+                                      } catch(e) { alert("Failed to drop player"); }
+                                    }
+                                  }}
+                                  className="bg-red-500 hover:bg-red-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold"
+                                  title={`Drop ${p.name}`}
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -272,7 +334,7 @@ export default function Dashboard() {
                   <div className="flex gap-4">
                     <div className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4">
                       <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-1">Squad</p>
-                      <p className="text-xl font-black text-white">{myTeam?.players?.length || 0} <span className="text-[10px] opacity-40">/14</span></p>
+                      <p className="text-xl font-black text-white">{myTeam?.players?.length || 0} <span className="text-[10px] opacity-40">/15</span></p>
                     </div>
                     <div className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4">
                       <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-1">Partner</p>

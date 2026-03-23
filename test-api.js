@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-const API_KEY = "9d6d54fc-293b-4d1f-9bc1-9e6c67af8b77";
+const API_KEY = process.env.CRICKET_API_KEY || "9d6d54fc-293b-4d1f-9bc1-9e6c67af8b77"; // Falls back to placeholder if not set
 
 async function run() {
   try {

@@ -112,11 +112,25 @@ export async function fetchLiveMatchStats(matchId: string): Promise<{ name: stri
             stats.sixes += Number(bat["6s"] || 0);
             
             const dismiss = String(bat.dismissal || "");
-            if (dismiss.includes("c ") && dismiss.includes("b ")) {
-               const catcherMatch = dismiss.match(/c\s(.*?)\sb\s/);
+            if (dismiss.includes("c & b ") || dismiss.includes("c and b ")) {
+               const bowlerMatch = dismiss.match(/b\s(.*)/);
+               if (bowlerMatch && bowlerMatch[1]) {
+                 const bowlerStats = getStats(bowlerMatch[1].trim());
+                 bowlerStats.catches += 1;
+               }
+            } else if (dismiss.includes("c ") && dismiss.includes("b ")) {
+               const catcherMatch = dismiss.match(/c\s+(.*?)\s+b\s+/);
                if (catcherMatch && catcherMatch[1]) {
-                 const catcherStats = getStats(catcherMatch[1].trim());
-                 catcherStats.catches += 1;
+                 let c = catcherMatch[1].trim();
+                 if (c.startsWith("sub (") || c.startsWith("sub(")) {
+                    c = c.replace(/sub\s*\(/, "").replace(/\)/, "").trim();
+                 }
+                 c = c.replace(/†/g, "").replace(/\+/g, "").trim();
+                 
+                 if (c !== "&" && c !== "and") {
+                   const catcherStats = getStats(c);
+                   catcherStats.catches += 1;
+                 }
                }
             } else if (dismiss.includes("st ")) {
                const stumperMatch = dismiss.match(/st\s(.*?)\sb\s/);

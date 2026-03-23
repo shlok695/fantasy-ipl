@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth";
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   
-  if (!session?.user || !(session.user as any).id) {
+  if (!session || !session.user || !(session.user as any).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       const squadCount = await tx.player.count({ 
         where: { userId, NOT: { role: "IPL TEAM" } } 
       });
-      if (squadCount >= 14) throw new Error("Squad full!");
+      if (squadCount >= 15) throw new Error("Squad full!");
 
       // PERFORM RTM
       const updated = await tx.auctionState.update({

@@ -19,7 +19,7 @@ export async function recalculateTeamTotalPoints(teamId: string, tx: any) {
   const top11Totals = playerTotals.slice(0, 11);
 
   // 5. Aggregate the score of those top 11
-  const top11Total = top11Totals.reduce((sum, p) => sum + p, 0);
+  const top11Total = top11Totals.reduce((sum: number, p: number) => sum + p, 0);
 
   // 6. Get user's bonus points (team wins)
   const user = await tx.user.findUnique({ where: { id: teamId } });

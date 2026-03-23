@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Link from 'next/link';
 import { getServerSession } from "next-auth";
@@ -12,6 +12,12 @@ export const metadata: Metadata = {
   description: 'Manage your IPL Auction and squads with family and friends.',
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export default async function RootLayout({
   children,
 }: {
@@ -21,8 +27,8 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <body className="antialiased bg-[#0f111a] text-white selection:bg-indigo-500/30 min-h-screen flex flex-col relative overflow-x-hidden">
-        <Providers>
+      <body suppressHydrationWarning className="antialiased bg-[#0f111a] text-white selection:bg-indigo-500/30 min-h-screen flex flex-col relative overflow-x-hidden">
+        <Providers session={session}>
         {/* Background Gradients */}
         <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-indigo-600/20 blur-[120px] rounded-full pointer-events-none" />
         <div className="absolute bottom-0 -right-1/4 w-1/2 h-1/2 bg-rose-600/20 blur-[120px] rounded-full pointer-events-none" />

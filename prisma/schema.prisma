@@ -8,23 +8,23 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  name        String   @unique
+  id          String         @id @default(uuid())
+  name        String         @unique
   password    String
-  budget      Float    @default(130.0) // 130 Cr default budget
-  totalPoints Float    @default(0.0)
-  bonusPoints Float    @default(0.0) // For team win bonuses (+50 each)
-  iplTeam     String?  // Chosen IPL team for RTM and bonuses
-  rtmUsed     Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  players     Player[]
+  budget      Float          @default(125.0)
+  totalPoints Float          @default(0.0)
+  bonusPoints Float          @default(0.0)
+  iplTeam     String?
+  rtmUsed     Boolean        @default(false)
+  lastActive  DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
   auctionWins AuctionState[]
+  players     Player[]
 }
 
 model Player {
-  id           String   @id @default(uuid())
+  id           String         @id @default(uuid())
   number       Int?
   name         String
   country      String?
@@ -34,43 +34,35 @@ model Player {
   iplTeam      String?
   basePrice    String?
   auctionPrice Float?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
   userId       String?
-  user         User?    @relation(fields: [userId], references: [id])
-
-  points       PlayerPoints[]
   auctionState AuctionState?
+  user         User?          @relation(fields: [userId], references: [id])
+  points       PlayerPoints[]
 }
 
 model PlayerPoints {
-  id        String   @id @default(uuid())
-  playerId  String
-  player    Player   @relation(fields: [playerId], references: [id])
-  matchId   String?  // Changed to String to support long API IDs
-  points    Float    @default(0.0)
-  
-  // Granular Stats for Leaderboards
+  id         String   @id @default(uuid())
+  playerId   String
+  matchId    String?
+  points     Float    @default(0.0)
   runs       Int      @default(0)
   ballsFaced Int      @default(0)
   wickets    Int      @default(0)
   dotBalls   Int      @default(0)
-  
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  player     Player   @relation(fields: [playerId], references: [id])
 }
 
-// Singleton state for the Live Multiplayer Auction
 model AuctionState {
-  id              String   @id @default("global")
-  
-  currentPlayerId String?  @unique
-  player          Player?  @relation(fields: [currentPlayerId], references: [id])
-  
-  highestBid      Float    @default(0)
+  id              String  @id @default("global")
+  currentPlayerId String? @unique
+  highestBid      Float   @default(0)
   highestBidderId String?
+  status          String   @default("WAITING")
+  readyTeams      String?
+  updatedAt       DateTime? @updatedAt
   highestBidder   User?    @relation(fields: [highestBidderId], references: [id])
-  
-  status          String   @default("WAITING") // WAITING, BIDDING, SUMMARY
-  readyTeams      String?  // Comma-separated user IDs who clicked Ready
+  player          Player?  @relation(fields: [currentPlayerId], references: [id])
 }

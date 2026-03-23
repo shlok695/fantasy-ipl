@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const users = await prisma.user.findMany({
@@ -10,6 +12,9 @@ export async function GET() {
       },
       include: {
         players: {
+          where: {
+            role: { not: 'IPL TEAM' }
+          },
           include: {
             points: true
           }
@@ -37,7 +42,7 @@ export async function POST(request: Request) {
       data: {
         name,
         password: hashedPassword,
-        budget: typeof budget === 'number' ? budget : 100.0,
+        budget: typeof budget === 'number' ? budget : 125.0,
       }
     });
 

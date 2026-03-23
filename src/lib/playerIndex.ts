@@ -38,17 +38,19 @@ export const COUNTRY_FLAGS: Record<string, string> = {
   "UAE": "https://flagcdn.com/w40/ae.png"
 };
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 export const FRANCHISE_LOGOS: Record<string, string> = {
-  "CSK": "/team-logos/CSK.jpg",
-  "MI": "/team-logos/MI.jpg",
-  "RCB": "/team-logos/RCB.jpg",
-  "KKR": "/team-logos/kkr.jpg",
-  "DC": "/team-logos/dc.jpg",
-  "RR": "/team-logos/RR.jpg",
-  "PBKS": "/team-logos/PBKS.jpg",
-  "SRH": "/team-logos/SRH.jpg",
-  "LSG": "/team-logos/lsg.jpg",
-  "GT": "/team-logos/GT.jpg"
+  "CSK": `${basePath}/team-logos/CSK.jpg`,
+  "MI": `${basePath}/team-logos/MI.jpg`,
+  "RCB": `${basePath}/team-logos/RCB.jpg`,
+  "KKR": `${basePath}/team-logos/kkr.jpg`,
+  "DC": `${basePath}/team-logos/dc.jpg`,
+  "RR": `${basePath}/team-logos/RR.jpg`,
+  "PBKS": `${basePath}/team-logos/PBKS.jpg`,
+  "SRH": `${basePath}/team-logos/SRH.jpg`,
+  "LSG": `${basePath}/team-logos/lsg.jpg`,
+  "GT": `${basePath}/team-logos/GT.jpg`
 };
 
 export interface PlayerInfo {
@@ -87,10 +89,10 @@ export function getPlayerImage(name: string, role?: string) {
   // 3. Generic Role-based placeholders
   if (role) {
     const normalizedRole = role.toLowerCase();
-    if (normalizedRole.includes('batter') || normalizedRole.includes('batsman')) return "/generic_players/batsman.png";
-    if (normalizedRole.includes('bowler')) return "/generic_players/bowler.jpeg";
-    if (normalizedRole.includes('all-rounder') || normalizedRole.includes('allrounder')) return "/generic_players/allrounder.png";
-    if (normalizedRole.includes('wicket')) return "/generic_players/wicketkeeper.png";
+    if (normalizedRole.includes('batter') || normalizedRole.includes('batsman')) return `${basePath}/generic_players/batsman.png`;
+    if (normalizedRole.includes('bowler')) return `${basePath}/generic_players/bowler.jpeg`;
+    if (normalizedRole.includes('all-rounder') || normalizedRole.includes('allrounder')) return `${basePath}/generic_players/allrounder.png`;
+    if (normalizedRole.includes('wicket')) return `${basePath}/generic_players/wicketkeeper.png`;
   }
 
   return "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png";

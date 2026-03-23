@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const XLSX = require('xlsx');
+const bcrypt = require('bcrypt');
 
 const prisma = new PrismaClient();
 const VALID_ACQUISITIONS = new Set(['Retained', 'Trade', 'Auction']);
@@ -14,6 +15,19 @@ const TRADE_BASE_PRICES = {
   'Mohammed Shami': 6.0,
   'Shardul Thakur': 3.5,
   'Sherfane Rutherford': 2.5,
+};
+
+const TEAM_ABBREVIATIONS = {
+  'Chennai Super Kings': 'CSK',
+  'Delhi Capitals': 'DC',
+  'Gujarat Titans': 'GT',
+  'Kolkata Knight Riders': 'KKR',
+  'Lucknow Super Giants': 'LSG',
+  'Mumbai Indians': 'MI',
+  'Punjab Kings': 'PBKS',
+  'Rajasthan Royals': 'RR',
+  'Royal Challengers Bengaluru': 'RCB',
+  'Sunrisers Hyderabad': 'SRH'
 };
 
 function cleanText(value) {
@@ -83,12 +97,48 @@ function resolveBasePrice(name, acquisition, rawPrice) {
 }
 
 async function main() {
-  const filePath = 'e:/auction/auction_db_final.xlsx';
+  // 1. Create Default Admin User
+  console.log("Checking for admin user...");
+  const adminExists = await prisma.user.findUnique({
+    where: { name: 'admin' }
+  });
+
+  if (!adminExists) {
+    console.log("Creating admin user...");
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    await prisma.user.create({
+      data: {
+        name: 'admin',
+        password: hashedPassword,
+        budget: 999.0, // Admin doesn't really need a budget but good to have a high value
+      }
+    });
+    console.log("Admin user created successfully (User: admin, Pwd: admin123)");
+  } else {
+    console.log("Admin user already exists.");
+  }
+
+  const filePath = '/home/shlok/ipl/auction_db_final.xlsx';
   console.log(`Reading from ${filePath}`);
 
   // Clear existing players to avoid duplicates
   console.log("Clearing existing players...");
   await prisma.player.deleteMany({});
+
+  console.log("Seeding IPL Teams as auctionable items...");
+  let teamCount = 0;
+  for (const [fullName, abbr] of Object.entries(TEAM_ABBREVIATIONS)) {
+    await prisma.player.create({
+      data: {
+        name: abbr,           // e.g., "CSK"
+        role: 'IPL TEAM',     // Identifies it as a franchise explicitly
+        basePrice: '2.00 Cr',
+      }
+    });
+    teamCount++;
+  }
+  console.log(`Successfully seeded ${teamCount} IPL Teams as auction items.`);
+
   const wb = XLSX.readFile(filePath);
   const ws = wb.Sheets[wb.SheetNames[0]];
   const data = XLSX.utils.sheet_to_json(ws);
@@ -107,6 +157,8 @@ async function main() {
     const role = row['Role']?.trim() || null;
     const basePrice = resolveBasePrice(name, acquisition, row['Price']);
     const country = row['Nationality']?.trim() || null;
+    const rawIplTeam = row['IPL Team (2026)']?.trim();
+    const iplTeam = TEAM_ABBREVIATIONS[rawIplTeam] || rawIplTeam || null;
 
     await prisma.player.create({
       data: {
@@ -117,6 +169,7 @@ async function main() {
         type,
         role,
         basePrice,
+        iplTeam,
       },
     });
     count++;
