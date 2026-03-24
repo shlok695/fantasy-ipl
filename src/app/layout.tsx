@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { AuthButton } from "@/components/AuthButton";
 import { HelpCircle } from "lucide-react";
 import { Providers } from "@/components/Providers";
+import { getLiveRoomVisible } from "@/lib/liveRoomVisibility";
 
 export const metadata: Metadata = {
   title: 'Fantasy IPL Auction & League',
@@ -24,6 +25,8 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const session = await getServerSession(authOptions);
+  const liveRoomVisible = await getLiveRoomVisible();
+  const showLiveRoomLink = session?.user?.name === 'admin' || liveRoomVisible;
 
   return (
     <html lang="en">
@@ -40,13 +43,21 @@ export default async function RootLayout({
             </Link>
             <div className="flex space-x-6 text-sm font-medium items-center">
               <Link href="/" className="hover:text-indigo-400 transition-colors">Dashboard</Link>
-              <Link href="/auction/live" className="hover:text-rose-400 transition-colors flex items-center gap-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                </span>
-                Live Room
-              </Link>
+              {session?.user && (
+                <>
+                  <Link href="/team" className="hover:text-indigo-400 transition-colors">My Team</Link>
+                  <Link href="/profile" className="hover:text-indigo-400 transition-colors">Profile</Link>
+                </>
+              )}
+              {showLiveRoomLink && (
+                <Link href="/auction/live" className="hover:text-rose-400 transition-colors flex items-center gap-1">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                  </span>
+                  Live Room
+                </Link>
+              )}
               {session?.user?.name === 'admin' && (
                 <>
                   <Link href="/auction" className="hover:text-indigo-400 transition-colors">Auction Admin</Link>

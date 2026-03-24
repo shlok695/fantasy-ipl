@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { recordAdminAudit } from '@/lib/adminAudit';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
       return deletedTeam;
     });
 
+    await recordAdminAudit(session.user!.name || 'admin', 'TEAM_DELETE', result.name);
     return NextResponse.json({ success: true, team: result });
 
   } catch (e: any) {

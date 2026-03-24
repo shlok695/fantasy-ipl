@@ -1,9 +1,18 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { recordAdminAudit } from '@/lib/adminAudit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const session = await getServerSession(authOptions);
+
+  if (session?.user?.name !== 'admin') {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { action, playerId, basePrice, category } = body;
@@ -26,6 +35,7 @@ export async function POST(request: Request) {
               readyTeams: ""
            }
         });
+        await recordAdminAudit(session.user!.name || 'admin', 'AUCTION_START', `${playerId} base:${Number(basePrice) || 0}`);
         return NextResponse.json({ success: true, state });
      } 
      
@@ -35,7 +45,7 @@ export async function POST(request: Request) {
         if (!state.highestBidderId) throw new Error("No one bid yet!");
         
         const bidAmount = state.highestBid;
-        const res = await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
            const player = await tx.player.findUnique({ where: { id: state.currentPlayerId! }});
            if (!player) throw new Error("Player not found");
 
@@ -68,7 +78,10 @@ export async function POST(request: Request) {
               where: { id: "global" },
               data: { status: "SUMMARY", readyTeams: "", updatedAt: new Date() }
            });
+
+           return { playerName: player.name, teamName: team.name, bidAmount };
         });
+        await recordAdminAudit(session.user!.name || 'admin', 'AUCTION_SELL', `${result.playerName} ${result.teamName} ${result.bidAmount}`);
         return NextResponse.json({ success: true });
      } 
      
@@ -84,6 +97,7 @@ export async function POST(request: Request) {
            where: { id: "global" },
            data: { status: "SUMMARY", readyTeams: "" }
         });
+        await recordAdminAudit(session.user!.name || 'admin', 'AUCTION_UNSOLD', `${state?.currentPlayerId || 'none'}`);
         return NextResponse.json({ success: true });
      }
      
@@ -104,6 +118,7 @@ export async function POST(request: Request) {
         });
         
         console.log(`[Control] Successfully pushed player:`, updatedState?.player?.name);
+        await recordAdminAudit(session.user!.name || 'admin', 'AUTO_QUEUE_PUSH', updatedState?.player?.name || 'none');
         return NextResponse.json({ success: true, state: updatedState });
      }
 
@@ -124,6 +139,7 @@ export async function POST(request: Request) {
             readyTeams: ""
           }
         });
+        await recordAdminAudit(session.user!.name || 'admin', 'TEAM_QUEUE_START', nextTeam.name);
         return NextResponse.json({ success: true });
      }
      
@@ -136,6 +152,7 @@ export async function POST(request: Request) {
             data: { highestBid: base, highestBidderId: null }
          });
        }
+       await recordAdminAudit(session.user!.name || 'admin', 'BID_RESET', state?.player?.name || state?.currentPlayerId || 'none');
        return NextResponse.json({ success: true });
      }
      
