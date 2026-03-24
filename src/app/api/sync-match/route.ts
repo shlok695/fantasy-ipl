@@ -5,11 +5,12 @@ import { authOptions } from "@/lib/auth";
 import { fetchLiveMatchStats } from '@/lib/cricketApi';
 import { calculateDream11Points } from '@/utils/pointsEngine';
 import { recalculateTeamTotalPoints } from '@/utils/teamScore';
+import { recordAdminAudit } from '@/lib/adminAudit';
 
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
+    if (session?.user?.name !== 'admin') {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -75,6 +76,12 @@ export async function POST(request: Request) {
         await recalculateTeamTotalPoints(teamId, tx);
       }
     });
+
+    await recordAdminAudit(
+      session.user!.name || 'admin',
+      'MATCH_SYNC',
+      `match:${matchId} players:${successfullyMatched}`
+    );
 
     return NextResponse.json({ 
       success: true, 

@@ -11,6 +11,12 @@ export async function GET() {
         name: { not: 'admin' }
       },
       include: {
+        captain: {
+          select: { id: true, name: true }
+        },
+        viceCaptain: {
+          select: { id: true, name: true }
+        },
         players: {
           where: {
             role: { not: 'IPL TEAM' }

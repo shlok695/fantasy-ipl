@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { recordAdminAudit } from '@/lib/adminAudit';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -17,10 +18,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    await prisma.user.update({
+    const team = await prisma.user.update({
       where: { id: teamId },
       data: { budget: newBudget }
     });
+    await recordAdminAudit(session.user!.name || 'admin', 'TEAM_BUDGET_EDIT', `${team.name} budget:${newBudget}`);
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

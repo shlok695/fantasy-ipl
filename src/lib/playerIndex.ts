@@ -38,7 +38,7 @@ export const COUNTRY_FLAGS: Record<string, string> = {
   "UAE": "https://flagcdn.com/w40/ae.png"
 };
 
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+import { basePath } from '@/lib/basePath';
 
 export const FRANCHISE_LOGOS: Record<string, string> = {
   "CSK": `${basePath}/team-logos/CSK.jpg`,

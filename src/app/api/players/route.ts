@@ -30,6 +30,7 @@ export async function GET(request: Request) {
       where: whereClause,
       include: {
         user: true,
+        points: true,
       },
       orderBy: { number: 'asc' },
     });

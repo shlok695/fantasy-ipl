@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { recordAdminAudit } from '@/lib/adminAudit';
 
 export async function POST(request: Request) {
+  const session = await getServerSession(authOptions);
+
   try {
     const { playerId, teamId, amount } = await request.json();
 
@@ -34,10 +39,14 @@ export async function POST(request: Request) {
         }
       });
 
-      return updatedPlayer;
+      return { updatedPlayer, teamName: team.name };
     });
 
-    return NextResponse.json({ success: true, player: result });
+    if (session?.user?.name === 'admin') {
+      await recordAdminAudit(session.user.name || 'admin', 'MANUAL_SELL', `${result.updatedPlayer.name} -> ${result.teamName} ${amount}`);
+    }
+
+    return NextResponse.json({ success: true, player: result.updatedPlayer });
 
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 });

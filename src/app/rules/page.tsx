@@ -91,7 +91,11 @@ export default function RulesPage() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between border-b border-white/5 pb-2"><span>Captain</span> <span className="text-yellow-400 font-bold">2x Points</span></div>
             <div className="flex justify-between border-b border-white/5 pb-2"><span>Vice-Captain</span> <span className="text-yellow-400 font-bold">1.5x Points</span></div>
+            <div className="flex justify-between border-b border-white/5 pb-2"><span>Partner IPL Team Match Win</span> <span className="text-emerald-400 font-bold">+50 pts</span></div>
             <div className="flex justify-between border-b border-white/5 pb-2"><span>In Starting XI / Substitute</span> <span className="text-emerald-400 font-bold">+4 pts</span></div>
+            <p className="text-xs text-gray-500 pt-3">
+              Example: if KKR wins, every franchise partnered with KKR gets 50 bonus points added to its team total.
+            </p>
           </div>
         </div>
       </div>
