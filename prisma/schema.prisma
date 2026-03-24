@@ -14,6 +14,8 @@ model User {
   budget      Float          @default(125.0)
   totalPoints Float          @default(0.0)
   bonusPoints Float          @default(0.0)
+  captainId   String?        @unique
+  viceCaptainId String?      @unique
   iplTeam     String?
   rtmUsed     Boolean        @default(false)
   lastActive  DateTime?
@@ -21,6 +23,8 @@ model User {
   updatedAt   DateTime       @updatedAt
   auctionWins AuctionState[]
   players     Player[]
+  captain     Player?        @relation("CaptainSelection", fields: [captainId], references: [id])
+  viceCaptain Player?        @relation("ViceCaptainSelection", fields: [viceCaptainId], references: [id])
 }
 
 model Player {
@@ -40,6 +44,8 @@ model Player {
   auctionState AuctionState?
   user         User?          @relation(fields: [userId], references: [id])
   points       PlayerPoints[]
+  captainOf    User?          @relation("CaptainSelection")
+  viceCaptainOf User?         @relation("ViceCaptainSelection")
 }
 
 model PlayerPoints {
@@ -61,6 +67,7 @@ model AuctionState {
   highestBid      Float   @default(0)
   highestBidderId String?
   status          String   @default("WAITING")
+  liveRoomVisible Boolean  @default(false)
   readyTeams      String?
   updatedAt       DateTime? @updatedAt
   highestBidder   User?    @relation(fields: [highestBidderId], references: [id])

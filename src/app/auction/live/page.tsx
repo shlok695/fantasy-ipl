@@ -4,10 +4,12 @@ import { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { Gavel, Clock, Trophy, AlertTriangle, Zap, UserX, Activity, UserCheck, LayoutDashboard } from 'lucide-react';
 import { getPlayerImage, getCountryFlag, getPlayerMeta, getFranchiseFlag } from '@/lib/playerIndex';
+import { basePath } from '@/lib/basePath';
 
 export default function LiveAuctionRoom() {
   const { data: session } = useSession();
   const [liveState, setLiveState] = useState<any>(null);
+  const [liveRoomHidden, setLiveRoomHidden] = useState(false);
   const [customBid, setCustomBid] = useState<string>('');
   const [isBidding, setIsBidding] = useState(false);
   const [teams, setTeams] = useState<any[]>([]);
@@ -17,8 +19,6 @@ export default function LiveAuctionRoom() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   const player = liveState?.player;
-
-  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/"/g, '');
 
   useEffect(() => {
     if (player?.name) {
@@ -44,8 +44,13 @@ export default function LiveAuctionRoom() {
   const fetchLiveState = async () => {
     try {
       const res = await fetch(`${basePath}/api/auction/live`);
+      if (res.status === 403) {
+        setLiveRoomHidden(true);
+        return;
+      }
       const data = await res.json();
       if (data.state) {
+        setLiveRoomHidden(false);
         setLiveState(data.state);
       }
     } catch (e) {
@@ -117,6 +122,15 @@ export default function LiveAuctionRoom() {
       setIsBidding(false);
     }
   };
+
+  if (liveRoomHidden) {
+    return (
+      <div className="glass-card p-8 sm:p-10 text-center max-w-2xl mx-auto">
+        <h1 className="text-3xl font-black mb-3">Live Room Hidden</h1>
+        <p className="text-gray-400">The admin has hidden the live room for now. It will reappear when the admin opens it for the league.</p>
+      </div>
+    );
+  }
 
   if (!liveState) {
     return (

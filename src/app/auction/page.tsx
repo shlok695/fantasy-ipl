@@ -5,6 +5,7 @@ import { Search, Gavel, UserCheck, UserX, Activity, ListChecks } from 'lucide-re
 import { useSession } from 'next-auth/react';
 import { getPlayerImage, getCountryFlag, getPlayerMeta, getFranchiseFlag } from '@/lib/playerIndex';
 import Link from 'next/link';
+import { basePath } from '@/lib/basePath';
 
 export default function AuctionRoom() {
   const { data: session } = useSession();
@@ -14,8 +15,6 @@ export default function AuctionRoom() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'passed'>('upcoming');
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
   const [dynamicMeta, setDynamicMeta] = useState<any>(null);
-
-  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/"/g, '');
 
   useEffect(() => {
     if (selectedPlayer?.name) {
@@ -43,6 +42,7 @@ export default function AuctionRoom() {
   const [loading, setLoading] = useState(false);
   const [liveState, setLiveState] = useState<any>(null);
   const [queueCategory, setQueueCategory] = useState<string>('');
+  const [liveRoomVisible, setLiveRoomVisible] = useState(false);
 
   const AUCTION_SETS_UI = [
     { label: 'Any (Auto-Detect)', value: '' },
@@ -105,6 +105,20 @@ export default function AuctionRoom() {
 
   useEffect(() => {
     fetchTeams();
+  }, []);
+
+  useEffect(() => {
+    const fetchLiveRoomVisibility = async () => {
+      try {
+        const res = await fetch(`${basePath}/api/auction/live-room`, { cache: 'no-store' });
+        const data = await res.json();
+        setLiveRoomVisible(Boolean(data.visible));
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    fetchLiveRoomVisibility();
   }, []);
 
   const handleSell = async (e: React.FormEvent) => {
@@ -194,13 +208,42 @@ export default function AuctionRoom() {
           <p className="text-xs sm:text-sm text-gray-400">Assign unsold players to family teams.</p>
         </div>
         {session?.user?.name === 'admin' && (
-          <Link 
-            href="/admin/sold" 
-            className="flex items-center gap-2 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/50 rounded-xl px-4 py-2 text-sm font-bold transition-all shadow-lg shadow-emerald-500/10"
-          >
-            <ListChecks size={18} />
-            <span className="hidden sm:inline">View Sold Items</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  const nextValue = !liveRoomVisible;
+                  const res = await fetch(`${basePath}/api/auction/live-room`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ visible: nextValue })
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    alert(data.error || 'Failed to update live room visibility');
+                    return;
+                  }
+                  setLiveRoomVisible(Boolean(data.visible));
+                } catch (error: any) {
+                  alert(error.message || 'Failed to update live room visibility');
+                }
+              }}
+              className={`rounded-xl px-4 py-2 text-sm font-bold transition-all shadow-lg ${
+                liveRoomVisible
+                  ? 'bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/50 shadow-rose-500/10'
+                  : 'bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10'
+              }`}
+            >
+              {liveRoomVisible ? 'Hide Live Room' : 'Show Live Room'}
+            </button>
+            <Link 
+              href="/admin/sold" 
+              className="flex items-center gap-2 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/50 rounded-xl px-4 py-2 text-sm font-bold transition-all shadow-lg shadow-emerald-500/10"
+            >
+              <ListChecks size={18} />
+              <span className="hidden sm:inline">View Sold Items</span>
+            </Link>
+          </div>
         )}
       </div>
 
