@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { pushNextPlayer } from "@/lib/auctionEngine";
+import { getLiveRoomVisible } from "@/lib/liveRoomVisibility";
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,12 @@ export async function GET() {
       });
     }
 
+    const liveRoomVisible = await getLiveRoomVisible();
+
+    if (session?.user?.name !== 'admin' && !liveRoomVisible) {
+      return NextResponse.json({ error: "Live room is hidden", hidden: true }, { status: 403 });
+    }
+
     // 2. Auto-Push Logic: If SUMMARY for too long, push!
     // Trigger if > 10 seconds in summary
     if (state.status === "SUMMARY" && state.updatedAt) {
@@ -73,7 +80,8 @@ export async function GET() {
     
     return NextResponse.json({
       state,
-      serverTime
+      serverTime,
+      visible: liveRoomVisible
     });
   } catch(e: any) {
     console.error("Live API Error:", e);

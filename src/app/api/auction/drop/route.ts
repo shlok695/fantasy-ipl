@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { recordAdminAudit } from '@/lib/adminAudit';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -48,10 +49,11 @@ export async function POST(request: Request) {
         });
       }
 
-      return updatedPlayer;
+      return { updatedPlayer, teamName: player.user?.name || 'Unknown', refundAmount };
     });
 
-    return NextResponse.json({ success: true, player: result });
+    await recordAdminAudit(session.user!.name || 'admin', 'PLAYER_DROP', `${result.updatedPlayer.name} from ${result.teamName} refund:${result.refundAmount}`);
+    return NextResponse.json({ success: true, player: result.updatedPlayer });
 
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 });

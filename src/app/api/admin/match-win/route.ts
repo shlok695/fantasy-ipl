@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { recalculateTeamTotalPoints } from '@/utils/teamScore';
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { recordAdminAudit } from '@/lib/adminAudit';
 
 export async function POST(request: Request) {
+  const session = await getServerSession(authOptions);
+
+  if (session?.user?.name !== 'admin') {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { iplTeam } = await request.json();
 
@@ -13,7 +22,8 @@ export async function POST(request: Request) {
     const result = await prisma.$transaction(async (tx) => {
       // Find all users who picked this team
       const users = await tx.user.findMany({
-        where: { iplTeam }
+        where: { iplTeam },
+        select: { id: true, name: true }
       });
 
       for (const user of users) {
@@ -29,6 +39,12 @@ export async function POST(request: Request) {
 
       return { updatedCount: users.length };
     });
+
+    await recordAdminAudit(
+      session.user!.name || 'admin',
+      'PARTNER_WIN_BONUS',
+      `${iplTeam} +50 to ${result.updatedCount} team(s)`
+    );
 
     return NextResponse.json({ success: true, result });
 
