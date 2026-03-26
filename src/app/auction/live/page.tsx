@@ -22,22 +22,7 @@ export default function LiveAuctionRoom() {
 
   useEffect(() => {
     if (player?.name) {
-      setDynamicMeta(null);
-      const localMeta = getPlayerMeta(player.name);
-      if (localMeta.image && localMeta.team) {
-         setDynamicMeta(localMeta);
-         return;
-      }
-      
-      fetch(`${basePath}/api/player-info?name=${encodeURIComponent(player.name)}`)
-        .then(res => res.json())
-        .then(data => {
-           setDynamicMeta({
-             image: localMeta.image || data.image,
-             team: localMeta.team || data.iplTeam
-           });
-        })
-        .catch(() => setDynamicMeta(localMeta));
+      setDynamicMeta(getPlayerMeta(player.name));
     }
   }, [player?.name]);
 
@@ -322,7 +307,7 @@ export default function LiveAuctionRoom() {
                     </div>
                   )}
                   <img
-                    src={dynamicMeta?.image || getPlayerImage(player.name, player.role)}
+                    src={getPlayerImage(player.name, player.role)}
                     alt={player.name}
                     className="w-32 h-32 md:w-48 md:h-48 rounded-2xl md:rounded-3xl border-4 border-white/10 shadow-2xl relative z-10 object-cover bg-black"
                   />

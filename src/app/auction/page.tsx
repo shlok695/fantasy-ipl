@@ -18,22 +18,7 @@ export default function AuctionRoom() {
 
   useEffect(() => {
     if (selectedPlayer?.name) {
-      setDynamicMeta(null);
-      const localMeta = getPlayerMeta(selectedPlayer.name);
-      if (localMeta.image && localMeta.team) {
-         setDynamicMeta(localMeta);
-         return;
-      }
-      
-      fetch(`${basePath}/api/player-info?name=${encodeURIComponent(selectedPlayer.name)}`)
-        .then(res => res.json())
-        .then(data => {
-           setDynamicMeta({
-             image: localMeta.image || data.image,
-             team: localMeta.team || data.iplTeam
-           });
-        })
-        .catch(() => setDynamicMeta(localMeta));
+      setDynamicMeta(getPlayerMeta(selectedPlayer.name));
     }
   }, [selectedPlayer?.name]);
   
@@ -350,7 +335,7 @@ export default function AuctionRoom() {
 
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 text-center sm:text-left">
                 <div className="relative shrink-0">
-                  <img src={dynamicMeta?.image || getPlayerImage(selectedPlayer.name, selectedPlayer.role)} alt={selectedPlayer.name} className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white/10 shadow-2xl transition-transform object-cover bg-black" />
+                  <img src={getPlayerImage(selectedPlayer.name, selectedPlayer.role)} alt={selectedPlayer.name} className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white/10 shadow-2xl transition-transform object-cover bg-black" />
                   {getCountryFlag(selectedPlayer.country) && (
                     <img src={getCountryFlag(selectedPlayer.country)!} alt={selectedPlayer.country || "India"} className="absolute -bottom-2 -right-1 sm:-bottom-3 sm:-right-3 w-8 h-6 sm:w-10 sm:h-7 object-cover rounded shadow-lg border border-white/20 z-20" />
                   )}
