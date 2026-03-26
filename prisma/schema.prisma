@@ -23,6 +23,7 @@ model User {
   updatedAt   DateTime       @updatedAt
   auctionWins AuctionState[]
   players     Player[]
+  simulationBonusAdjustments SimulationTeamBonusAdjustment[]
   captain     Player?        @relation("CaptainSelection", fields: [captainId], references: [id])
   viceCaptain Player?        @relation("ViceCaptainSelection", fields: [viceCaptainId], references: [id])
 }
@@ -49,16 +50,18 @@ model Player {
 }
 
 model PlayerPoints {
-  id         String   @id @default(uuid())
-  playerId   String
-  matchId    String?
-  points     Float    @default(0.0)
-  runs       Int      @default(0)
-  ballsFaced Int      @default(0)
-  wickets    Int      @default(0)
-  dotBalls   Int      @default(0)
-  createdAt  DateTime @default(now())
-  player     Player   @relation(fields: [playerId], references: [id])
+  id                String            @id @default(uuid())
+  playerId          String
+  simulationBatchId String?
+  matchId           String?
+  points            Float             @default(0.0)
+  runs              Int               @default(0)
+  ballsFaced        Int               @default(0)
+  wickets           Int               @default(0)
+  dotBalls          Int               @default(0)
+  createdAt         DateTime          @default(now())
+  player            Player            @relation(fields: [playerId], references: [id])
+  simulationBatch   SimulationBatch?  @relation(fields: [simulationBatchId], references: [id], onDelete: SetNull)
 }
 
 model AuctionState {
@@ -72,4 +75,26 @@ model AuctionState {
   updatedAt       DateTime? @updatedAt
   highestBidder   User?    @relation(fields: [highestBidderId], references: [id])
   player          Player?  @relation(fields: [currentPlayerId], references: [id])
+}
+
+model SimulationBatch {
+  id                    String                         @id
+  label                 String
+  sourceSeason          String
+  notes                 String?
+  createdAt             DateTime                       @default(now())
+  playerPoints          PlayerPoints[]
+  teamBonusAdjustments  SimulationTeamBonusAdjustment[]
+}
+
+model SimulationTeamBonusAdjustment {
+  id                String           @id @default(uuid())
+  simulationBatchId String
+  userId            String
+  matchId           String?
+  iplTeam           String?
+  points            Float
+  createdAt         DateTime         @default(now())
+  simulationBatch   SimulationBatch  @relation(fields: [simulationBatchId], references: [id], onDelete: Cascade)
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
