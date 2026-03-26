@@ -1,13 +1,17 @@
 {
   "name": "fantasy-ipl",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "reprice": "node scripts/reprice-base-prices.js"
+    "reprice": "node scripts/reprice-base-prices.js",
+    "simulate:test": "node scripts/simulate-ipl-test.js",
+    "simulate:test:dry": "node scripts/simulate-ipl-test.js --dry-run",
+    "simulate:clear": "node scripts/clear-simulated-test-data.js",
+    "simulate:clear:dry": "node scripts/clear-simulated-test-data.js --dry-run"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

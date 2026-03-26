@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { HelpCircle, Star, Target, Shield, Zap } from 'lucide-react';
 
 export default function RulesPage() {
@@ -11,6 +12,29 @@ export default function RulesPage() {
         <p className="text-sm sm:text-base text-gray-400 text-center max-w-2xl px-2">
           Here is exactly how players earn points for your franchise during live matches. We strictly follow the standard T20 Fantasy Points ruleset.
         </p>
+        <div className="flex flex-wrap justify-center gap-3 pt-2">
+          <Link href="/" className="rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-3 text-sm font-bold text-white">
+            Dashboard
+          </Link>
+        </div>
+      </div>
+
+      <div className="glass-card p-6 border border-white/5">
+        <h2 className="text-2xl font-bold text-white mb-4">League Format</h2>
+        <div className="grid gap-4 sm:grid-cols-3 text-sm">
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Franchises</p>
+            <p className="mt-2 text-white font-bold">Fantasy teams draft squads in the auction and compete on one live league table.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Scoring</p>
+            <p className="mt-2 text-white font-bold">Leaderboard totals come from each franchise&apos;s best 11 player scores plus bonus points.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">League Flow</p>
+            <p className="mt-2 text-white font-bold">Use the dashboard and players views to follow scores, team totals, and player performances.</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
