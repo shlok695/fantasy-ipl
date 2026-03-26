@@ -1,3 +1,5 @@
+import { basePath } from '@/lib/basePath';
+
 export const COUNTRY_FLAGS: Record<string, string> = {
   "India": "https://flagcdn.com/w40/in.png",
   "Indian": "https://flagcdn.com/w40/in.png",
@@ -38,8 +40,6 @@ export const COUNTRY_FLAGS: Record<string, string> = {
   "UAE": "https://flagcdn.com/w40/ae.png"
 };
 
-import { basePath } from '@/lib/basePath';
-
 export const FRANCHISE_LOGOS: Record<string, string> = {
   "CSK": `${basePath}/team-logos/CSK.jpg`,
   "MI": `${basePath}/team-logos/MI.jpg`,
@@ -54,39 +54,33 @@ export const FRANCHISE_LOGOS: Record<string, string> = {
 };
 
 export interface PlayerInfo {
-  image?: string;
   team?: string;
 }
 
 export const PLAYER_INFO: Record<string, PlayerInfo> = {
-  "Shreyas Iyer": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1563.png", team: "PBKS" },
-  "Rishabh Pant": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/2972.png", team: "LSG" },
-  "Mitchell Starc": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/137.png", team: "DC" },
-  "KL Rahul": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1125.png", team: "DC" },
-  "Jos Buttler": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/509.png", team: "GT" },
-  "Ravichandran Ashwin": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/8.png", team: "RR" },
-  "Kagiso Rabada": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/116.png", team: "GT" },
-  "Mohammed Siraj": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/3840.png", team: "GT" },
-  "David Warner": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/170.png", team: "DC" },
-  "Quinton De Kock": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/834.png", team: "MI" },
-  "Faf Du Plessis": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/24.png", team: "RCB" },
-  "Trent Boult": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/969.png", team: "MI" },
-  "Virat Kohli": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/164.png", team: "RCB" },
-  "MS Dhoni": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/1.png", team: "CSK" },
-  "Rohit Sharma": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/107.png", team: "MI" },
-  "Sherfane Rutherford": { image: "https://bcciplayerimages.s3.ap-south-1.amazonaws.com/ipl/IPLHeadshot2024/2881.png", team: "MI" }
+  "Shreyas Iyer": { team: "PBKS" },
+  "Rishabh Pant": { team: "LSG" },
+  "Mitchell Starc": { team: "DC" },
+  "KL Rahul": { team: "DC" },
+  "Jos Buttler": { team: "GT" },
+  "Ravichandran Ashwin": { team: "RR" },
+  "Kagiso Rabada": { team: "GT" },
+  "Mohammed Siraj": { team: "GT" },
+  "David Warner": { team: "DC" },
+  "Quinton De Kock": { team: "MI" },
+  "Faf Du Plessis": { team: "RCB" },
+  "Trent Boult": { team: "MI" },
+  "Virat Kohli": { team: "RCB" },
+  "MS Dhoni": { team: "CSK" },
+  "Rohit Sharma": { team: "MI" },
+  "Sherfane Rutherford": { team: "MI" }
 };
 
 export function getPlayerImage(name: string, role?: string) {
-  // 1. Check hardcoded specific players
-  if (PLAYER_INFO[name]?.image) return PLAYER_INFO[name].image;
-  
-  // 2. Check if it's an IPL Team (CSK, MI, etc.)
   if (role === "IPL TEAM" || FRANCHISE_LOGOS[name]) {
     return getFranchiseFlag(name);
   }
 
-  // 3. Generic Role-based placeholders
   if (role) {
     const normalizedRole = role.toLowerCase();
     if (normalizedRole.includes('batter') || normalizedRole.includes('batsman')) return `${basePath}/generic_players/batsman.png`;
@@ -95,7 +89,7 @@ export function getPlayerImage(name: string, role?: string) {
     if (normalizedRole.includes('wicket')) return `${basePath}/generic_players/wicketkeeper.png`;
   }
 
-  return "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png";
+  return `${basePath}/generic_players/batsman.png`;
 }
 
 export function getPlayerMeta(name: string) {
@@ -111,5 +105,5 @@ export function getCountryFlag(country: string | null | undefined) {
 export function getFranchiseFlag(teamName: string) {
   const found = Object.entries(FRANCHISE_LOGOS).find(([key]) => key.toLowerCase() === teamName.toLowerCase());
   if (found) return found[1];
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(teamName)}&background=1e1b4b&color=818cf8&size=128&bold=true`;
+  return `${basePath}/generic_players/allrounder.png`;
 }
