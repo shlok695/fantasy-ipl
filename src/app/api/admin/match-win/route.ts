@@ -28,11 +28,11 @@ export async function POST(request: Request) {
 
       for (const user of users) {
         // Add 50 bonus points
-        const updatedUser = await tx.user.update({
+        await tx.user.update({
           where: { id: user.id },
           data: { bonusPoints: { increment: 50 } }
         });
-        
+
         // Recalculate their total
         await recalculateTeamTotalPoints(user.id, tx);
       }
@@ -48,7 +48,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, result });
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 400 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
