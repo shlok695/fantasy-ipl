@@ -1,4 +1,3 @@
-import { recalculateTeamTotalPoints, recalculateTeamsByIds } from "./teamScoreCore";
+import { recalculateLeagueTotalPoints, recalculateTeamTotalPoints, recalculateTeamsByIds } from "./teamScoreCore";
 
-export { recalculateTeamTotalPoints, recalculateTeamsByIds };
-
+export { recalculateLeagueTotalPoints, recalculateTeamTotalPoints, recalculateTeamsByIds };

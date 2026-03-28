@@ -43,3 +43,17 @@ export async function listAdminAudit(limit = 80) {
     limit
   );
 }
+
+export async function hasAdminAuditAction(action: string) {
+  await ensureAdminAuditTable();
+
+  const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    `SELECT "id"
+     FROM "AdminAuditLog"
+     WHERE "action" = ?
+     LIMIT 1`,
+    action
+  );
+
+  return rows.length > 0;
+}

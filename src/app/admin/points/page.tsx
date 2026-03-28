@@ -24,8 +24,10 @@ export default function PointsAdmin() {
   const [teamBonusPoints, setTeamBonusPoints] = useState('');
   const [loading, setLoading] = useState(false);
   const [teamLoading, setTeamLoading] = useState(false);
+  const [seasonAwardsLoading, setSeasonAwardsLoading] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const IPL_TEAMS = ['CSK', 'DC', 'GT', 'KKR', 'LSG', 'MI', 'PBKS', 'RR', 'RCB', 'SRH'];
+  const seasonAwardsApplied = auditLogs.some((log) => log.action === 'SEASON_AWARDS_APPLIED');
 
   const fetchSoldPlayers = async () => {
     try {
@@ -211,6 +213,39 @@ export default function PointsAdmin() {
       alert('Failed to award partner win bonus');
     } finally {
       setTeamLoading(false);
+    }
+  };
+
+  const applySeasonAwards = async () => {
+    if (seasonAwardsApplied) {
+      alert('Season awards bonus has already been applied');
+      return;
+    }
+
+    const confirmed = window.confirm('Apply the season-end Orange Cap, Purple Cap, and MVP bonuses now? This should only be done once.');
+    if (!confirmed) {
+      return;
+    }
+
+    setSeasonAwardsLoading(true);
+    try {
+      const res = await fetch(`${basePath}/api/admin/season-awards`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to apply season awards');
+        return;
+      }
+
+      const summary = (data.winners || []).map((winner: any) => `${winner.label}: ${winner.playerName} -> ${winner.franchiseName}`).join('\n');
+      alert(`Season awards applied.\n\n${summary}`);
+      await fetchTeams();
+      await fetchAuditLogs();
+    } catch (e) {
+      alert('Failed to apply season awards');
+    } finally {
+      setSeasonAwardsLoading(false);
     }
   };
 
@@ -457,6 +492,29 @@ export default function PointsAdmin() {
             ) : (
               <p className="text-sm text-gray-500 border-t border-white/10 pt-5">Select a team to edit its bonus points.</p>
             )}
+          </div>
+
+          <div className="glass-card p-6 sm:p-8">
+            <div className="flex items-center gap-3 mb-5">
+              <Trophy className="text-fuchsia-400" />
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold">Season-End Awards</h2>
+                <p className="text-sm text-gray-400">Apply +500 to the franchise of the Orange Cap, Purple Cap, and Most Valuable Player winners.</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-gray-300">
+                This is a one-time season-close action. If `SEASON_FINAL_MATCH_ID` matches the synced final, these bonuses can also be applied automatically right after that final is imported.
+              </div>
+              <button
+                type="button"
+                onClick={applySeasonAwards}
+                disabled={seasonAwardsLoading || seasonAwardsApplied}
+                className="w-full rounded-2xl bg-fuchsia-500 hover:bg-fuchsia-400 text-white font-black py-4 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                {seasonAwardsLoading ? 'Applying...' : seasonAwardsApplied ? 'Season Awards Already Applied' : 'Apply Season-End Award Bonuses'}
+              </button>
+            </div>
           </div>
 
           <div className="glass-card p-6 sm:p-8">

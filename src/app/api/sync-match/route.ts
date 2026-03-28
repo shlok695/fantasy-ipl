@@ -3,9 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { fetchLiveMatchStats } from '@/lib/cricketApi';
+import { hasAdminAuditAction, recordAdminAudit } from '@/lib/adminAudit';
+import { formatSeasonAwardAuditDetails, getSeasonAwardBonusByTeam, getSeasonAwardWinners } from '@/lib/seasonAwards';
 import { calculateDream11Points } from '@/utils/pointsEngine';
-import { recalculateTeamTotalPoints } from '@/utils/teamScore';
-import { recordAdminAudit } from '@/lib/adminAudit';
+import { recalculateLeagueTotalPoints, recalculateTeamTotalPoints } from '@/utils/teamScore';
 
 export async function POST(request: Request) {
   try {
@@ -22,6 +23,9 @@ export async function POST(request: Request) {
     // 1. Fetch scorecard from the 3rd party API (or Mock)
     const scorecard = await fetchLiveMatchStats(matchId);
     let successfullyMatched = 0;
+    let seasonAwardWinners: ReturnType<typeof getSeasonAwardWinners> = [];
+    const shouldAutoApplySeasonAwards = process.env.SEASON_FINAL_MATCH_ID === String(matchId);
+    const seasonAwardsAlreadyApplied = shouldAutoApplySeasonAwards ? await hasAdminAuditAction('SEASON_AWARDS_APPLIED') : false;
 
     // 2. Wrap the DB updates in a Transaction to ensure consistency
     await prisma.$transaction(async (tx) => {
@@ -75,6 +79,39 @@ export async function POST(request: Request) {
       for (const teamId of Array.from(modifiedTeams)) {
         await recalculateTeamTotalPoints(teamId, tx);
       }
+
+      if (shouldAutoApplySeasonAwards && !seasonAwardsAlreadyApplied) {
+        const players = await tx.player.findMany({
+          where: { userId: { not: null }, role: { not: 'IPL TEAM' } },
+          select: {
+            id: true,
+            name: true,
+            userId: true,
+            user: { select: { name: true } },
+            points: {
+              select: {
+                points: true,
+                runs: true,
+                wickets: true,
+              }
+            }
+          }
+        });
+
+        seasonAwardWinners = getSeasonAwardWinners(players);
+
+        const bonusByTeam = getSeasonAwardBonusByTeam(seasonAwardWinners);
+        for (const [teamId, points] of bonusByTeam.entries()) {
+          await tx.user.update({
+            where: { id: teamId },
+            data: { bonusPoints: { increment: points } }
+          });
+        }
+
+        if (seasonAwardWinners.length > 0) {
+          await recalculateLeagueTotalPoints(tx);
+        }
+      }
     });
 
     await recordAdminAudit(
@@ -83,12 +120,21 @@ export async function POST(request: Request) {
       `match:${matchId} players:${successfullyMatched}`
     );
 
+    if (seasonAwardWinners.length > 0) {
+      await recordAdminAudit(
+        session.user!.name || 'admin',
+        'SEASON_AWARDS_APPLIED',
+        formatSeasonAwardAuditDetails(seasonAwardWinners)
+      );
+    }
+
     return NextResponse.json({ 
       success: true, 
-      message: `Successfully synced ${successfullyMatched} players from match ${matchId}.`
+      message: `Successfully synced ${successfullyMatched} players from match ${matchId}.${seasonAwardWinners.length > 0 ? ' Season-end awards were applied automatically.' : ''}`
     });
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
