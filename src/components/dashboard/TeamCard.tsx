@@ -33,6 +33,8 @@ export function TeamCard({
 }: TeamCardProps) {
   const { team, rank, points, playerCount, budget, topPlayers, recentTrend } = summary;
   const featured = variant === "podium";
+  const captainName = team.captain?.name || "Not selected";
+  const viceCaptainName = team.viceCaptain?.name || "Not selected";
 
   if (featured) {
     return (
@@ -73,6 +75,17 @@ export function TeamCard({
             <MetricTile label="Points" value={`${Math.round(points)}`} accent="text-white" />
             <MetricTile label="Squad" value={`${playerCount}`} accent="text-cyan-200" />
             <MetricTile label="Budget" value={`${budget.toFixed(1)} Cr`} accent="text-cyan-200" />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <LeadershipTile label="Captain" value={captainName} accent="text-amber-300" badge="C" badgeClass="border-amber-400/25 bg-amber-400/10 text-amber-300" />
+            <LeadershipTile
+              label="Vice Captain"
+              value={viceCaptainName}
+              accent="text-indigo-300"
+              badge="VC"
+              badgeClass="border-indigo-400/25 bg-indigo-400/10 text-indigo-300"
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
@@ -211,6 +224,17 @@ export function TeamCard({
         </div>
 
         <div className="rounded-[24px] border border-white/10 bg-slate-950/45 p-4">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <LeadershipTile label="Captain" value={captainName} accent="text-amber-300" badge="C" badgeClass="border-amber-400/25 bg-amber-400/10 text-amber-300" />
+            <LeadershipTile
+              label="Vice Captain"
+              value={viceCaptainName}
+              accent="text-indigo-300"
+              badge="VC"
+              badgeClass="border-indigo-400/25 bg-indigo-400/10 text-indigo-300"
+            />
+          </div>
+
           <div className="mb-3 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-500">Top 3 Players</p>
@@ -268,6 +292,30 @@ function MetricTile({ label, value, accent }: { label: string; value: string; ac
     <div className="rounded-[22px] border border-white/10 bg-slate-950/60 px-4 py-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500">{label}</p>
       <p className={`mt-2 text-3xl font-black ${accent}`}>{value}</p>
+    </div>
+  );
+}
+
+function LeadershipTile({
+  label,
+  value,
+  accent,
+  badge,
+  badgeClass,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+  badge: string;
+  badgeClass: string;
+}) {
+  return (
+    <div className="rounded-[22px] border border-white/10 bg-slate-950/60 px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500">{label}</p>
+        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.24em] ${badgeClass}`}>{badge}</span>
+      </div>
+      <p className={`mt-2 truncate text-base font-black ${accent}`}>{value}</p>
     </div>
   );
 }
