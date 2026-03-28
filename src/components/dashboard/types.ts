@@ -30,6 +30,16 @@ export interface DashboardTeam {
   totalPoints: number;
   bonusPoints?: number;
   iplTeam?: string | null;
+  captainId?: string | null;
+  viceCaptainId?: string | null;
+  captain?: {
+    id: string;
+    name: string;
+  } | null;
+  viceCaptain?: {
+    id: string;
+    name: string;
+  } | null;
   players?: DashboardPlayer[];
 }
 
