@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
+import { maybeAutoSyncConfiguredMatch } from '@/lib/matchSync';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    try {
+      await maybeAutoSyncConfiguredMatch();
+    } catch (syncError) {
+      console.error("Auto-sync skipped after failure in /api/teams", syncError);
+    }
+
     const users = await prisma.user.findMany({
       where: {
         name: { not: 'admin' }

@@ -26,6 +26,15 @@ export default function PointsAdmin() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [seasonAwardsLoading, setSeasonAwardsLoading] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [liveSyncConfig, setLiveSyncConfig] = useState({
+    matchId: '',
+    matchStartAt: '',
+    afterOverMinutes: '6',
+    intervalMs: '60000',
+    enabled: false,
+  });
+  const [liveSyncSaving, setLiveSyncSaving] = useState(false);
+  const [detectedLiveMatch, setDetectedLiveMatch] = useState<any>(null);
   const IPL_TEAMS = ['CSK', 'DC', 'GT', 'KKR', 'LSG', 'MI', 'PBKS', 'RR', 'RCB', 'SRH'];
   const seasonAwardsApplied = auditLogs.some((log) => log.action === 'SEASON_AWARDS_APPLIED');
 
@@ -59,6 +68,28 @@ export default function PointsAdmin() {
     }
   };
 
+  const fetchLiveSyncConfig = async () => {
+    try {
+      const res = await fetch(`${basePath}/api/admin/live-sync`, { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && data.config) {
+        setLiveSyncConfig({
+          matchId: data.config.matchId || '',
+          matchStartAt: data.config.matchStartAt || '',
+          afterOverMinutes: String(data.config.afterOverMinutes ?? 6),
+          intervalMs: String(data.config.intervalMs ?? 60000),
+          enabled: Boolean(data.config.enabled),
+        });
+        if (data.config.matchId) {
+          setMatchIdSync(data.config.matchId);
+        }
+        setDetectedLiveMatch(data.detectedMatch || null);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     fetchSoldPlayers();
   }, [search]);
@@ -66,6 +97,7 @@ export default function PointsAdmin() {
   useEffect(() => {
     fetchTeams();
     fetchAuditLogs();
+    fetchLiveSyncConfig();
   }, []);
 
   useEffect(() => {
@@ -249,6 +281,44 @@ export default function PointsAdmin() {
     }
   };
 
+  const saveLiveSyncConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLiveSyncSaving(true);
+    setSyncMessage(null);
+
+    try {
+      const res = await fetch(`${basePath}/api/admin/live-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId: liveSyncConfig.matchId,
+          matchStartAt: liveSyncConfig.matchStartAt,
+          afterOverMinutes: parseInt(liveSyncConfig.afterOverMinutes, 10),
+          intervalMs: parseInt(liveSyncConfig.intervalMs, 10),
+          enabled: liveSyncConfig.enabled,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save live sync settings');
+
+      setLiveSyncConfig({
+        matchId: data.config.matchId || '',
+        matchStartAt: data.config.matchStartAt || '',
+        afterOverMinutes: String(data.config.afterOverMinutes ?? 6),
+        intervalMs: String(data.config.intervalMs ?? 60000),
+        enabled: Boolean(data.config.enabled),
+      });
+      setMatchIdSync(data.config.matchId || '');
+      setSyncMessage({ type: 'success', text: `Live auto-sync ${data.config.enabled ? 'enabled' : 'saved as disabled'} for match ${data.config.matchId || 'not set'}.` });
+      await fetchAuditLogs();
+    } catch (err: any) {
+      setSyncMessage({ type: 'error', text: err.message });
+    } finally {
+      setLiveSyncSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 px-4 sm:px-0">
       <div className="flex justify-center flex-col items-center gap-3 sm:gap-4 border-b border-indigo-500/20 pb-6 sm:pb-8 pt-2 sm:pt-4">
@@ -295,6 +365,114 @@ export default function PointsAdmin() {
           >
             {syncLoading ? <RefreshCw className="animate-spin" size={18} /> : <Zap size={18} />}
             {syncLoading ? 'Syncing...' : 'Calculate Points'}
+          </button>
+        </form>
+      </div>
+
+      <div className="glass-card p-4 sm:p-6 border border-white/5 bg-gradient-to-r from-cyan-500/10 to-transparent">
+        <div className="flex items-center gap-3 mb-4 sm:mb-6">
+          <div className="p-2.5 sm:p-3 bg-cyan-500/20 rounded-full text-cyan-300">
+            <RefreshCw size={20} className="sm:w-6 sm:h-6" />
+          </div>
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold">Auto Live Sync Settings</h2>
+            <p className="text-xs sm:text-sm text-gray-400">Store the current live match in the app so sync starts automatically after one over.</p>
+          </div>
+        </div>
+
+        <form onSubmit={saveLiveSyncConfig} className="space-y-4">
+          <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={liveSyncConfig.enabled}
+              onChange={(e) => setLiveSyncConfig((current) => ({ ...current, enabled: e.target.checked }))}
+              className="h-4 w-4 rounded border-white/20 bg-black/40"
+            />
+            <span className="text-sm font-bold text-white">Enable automatic live sync</span>
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Live Match ID</label>
+              <input
+                type="text"
+                value={liveSyncConfig.matchId}
+                onChange={(e) => setLiveSyncConfig((current) => ({ ...current, matchId: e.target.value }))}
+                placeholder="e.g. 12345"
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Match Start Time</label>
+              <input
+                type="datetime-local"
+                value={liveSyncConfig.matchStartAt}
+                onChange={(e) => setLiveSyncConfig((current) => ({ ...current, matchStartAt: e.target.value }))}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Delay After Start</label>
+              <input
+                type="number"
+                min="0"
+                value={liveSyncConfig.afterOverMinutes}
+                onChange={(e) => setLiveSyncConfig((current) => ({ ...current, afterOverMinutes: e.target.value }))}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base font-mono"
+              />
+              <p className="mt-1 text-[11px] text-gray-500">Default is 6 minutes, roughly one over.</p>
+            </div>
+            <div>
+              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Retry Interval (ms)</label>
+              <input
+                type="number"
+                min="1000"
+                step="1000"
+                value={liveSyncConfig.intervalMs}
+                onChange={(e) => setLiveSyncConfig((current) => ({ ...current, intervalMs: e.target.value }))}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base font-mono"
+              />
+            </div>
+          </div>
+
+          {detectedLiveMatch ? (
+            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+              <p className="font-bold">Detected live IPL match from API</p>
+              <p className="mt-1">{detectedLiveMatch.name || detectedLiveMatch.id}</p>
+              <p className="mt-1 text-xs text-emerald-200/80">
+                Match ID: {detectedLiveMatch.id} • Overs: {detectedLiveMatch.overs} • {detectedLiveMatch.status || 'Live'}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setLiveSyncConfig((current) => ({
+                    ...current,
+                    enabled: true,
+                    matchId: String(detectedLiveMatch.id || ''),
+                    matchStartAt: detectedLiveMatch.dateTimeGMT ? String(detectedLiveMatch.dateTimeGMT).slice(0, 16) : current.matchStartAt,
+                  }));
+                  setMatchIdSync(String(detectedLiveMatch.id || ''));
+                }}
+                className="mt-3 rounded-lg bg-emerald-400 px-3 py-2 text-xs font-black text-slate-950"
+              >
+                Use Detected Match
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-gray-400">
+              No live IPL match was detected from the API right now.
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={liveSyncSaving}
+            className="w-full sm:w-auto bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-6 py-3 rounded-xl font-black flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+          >
+            {liveSyncSaving ? 'Saving...' : 'Save Auto Sync Settings'}
           </button>
         </form>
       </div>
