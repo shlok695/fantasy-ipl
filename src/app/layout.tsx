@@ -26,7 +26,12 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getServerSession(authOptions);
+  let session = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch (error) {
+    console.error("Failed to read NextAuth session in RootLayout", error);
+  }
   const liveRoomVisible = await getLiveRoomVisible();
   const showLiveRoomLink = session?.user?.name === 'admin' || liveRoomVisible;
 
