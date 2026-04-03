@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import playerTeams from '../../../../data_dump/player_teams.json';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,11 +41,10 @@ export async function GET(req: Request) {
     const knownTeams = ["Chennai Super Kings", "Mumbai Indians", "Royal Challengers Bengaluru", "Royal Challengers Bangalore", "Kolkata Knight Riders", "Delhi Capitals", "Rajasthan Royals", "Punjab Kings", "Sunrisers Hyderabad", "Lucknow Super Giants", "Gujarat Titans"];
     let iplTeam: string | null = null;
     try {
-      const dbTeams = require('../../../../player_teams.json');
       // Normalize names to match keys smoothly
-      const dbKey = Object.keys(dbTeams).find(k => k.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(k.toLowerCase()));
+      const dbKey = Object.keys(playerTeams).find(k => k.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(k.toLowerCase()));
       if (dbKey) {
-        iplTeam = dbTeams[dbKey];
+        iplTeam = playerTeams[dbKey as keyof typeof playerTeams];
       }
     } catch(e) {}
 
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const teamMap: any = {
+    const teamMap: Record<string, string> = {
       "Chennai Super Kings": "CSK",
       "Mumbai Indians": "MI",
       "Royal Challengers Bengaluru": "RCB",
@@ -76,9 +76,8 @@ export async function GET(req: Request) {
     
     if (!iplTeam) {
       try {
-        const fallback = require('../../../../player_teams.json');
-        if (fallback[name]) {
-          iplTeam = fallback[name];
+        if (playerTeams[name as keyof typeof playerTeams]) {
+          iplTeam = playerTeams[name as keyof typeof playerTeams];
         }
       } catch(e) {}
     }
@@ -88,4 +87,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: String(e), trace: e?.stack });
   }
 }
-

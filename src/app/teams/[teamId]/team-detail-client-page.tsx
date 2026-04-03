@@ -1,18 +1,24 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Crown, Users } from "lucide-react";
 import { LeaguePageHeader } from "@/components/league/LeaguePageHeader";
 import { LoadingSkeleton } from "@/components/league/LoadingSkeleton";
+import { MatchBreakdownPanel } from "@/components/team/MatchBreakdownPanel";
+import { ExpandableSquadPlayerRow } from "@/components/team/ExpandableSquadPlayerRow";
+import { TeamViewTabs, type TeamViewTabId } from "@/components/team/TeamViewTabs";
 import { useLeagueData } from "@/components/league/useLeagueData";
 import { getTeamById } from "@/lib/leagueData";
-import { getPlayerImage } from "@/lib/playerIndex";
-import { getPlayerTotalPoints, sortPlayersByPoints } from "@/lib/teamMetrics";
+import { getCountryFlag } from "@/lib/playerIndex";
+import { formatMatchDateLabel, getLatestAndPreviousTeamMatches } from "@/lib/teamHistory";
+import { sortPlayersByPoints } from "@/lib/teamMetrics";
 
 export function TeamDetailClientPage({ teamId }: { teamId: string }) {
   const { loading, derived } = useLeagueData();
+  const [teamTab, setTeamTab] = useState<TeamViewTabId>("overview");
 
   if (loading) {
     return <LoadingSkeleton />;
@@ -25,6 +31,7 @@ export function TeamDetailClientPage({ teamId }: { teamId: string }) {
 
   const summary = derived.teamSummaries.find((entry) => entry.team.id === teamId);
   const players = sortPlayersByPoints(team.players || []);
+  const { latestMatch, previousMatch, matches } = getLatestAndPreviousTeamMatches(team);
 
   return (
     <div className="space-y-8">
@@ -40,6 +47,9 @@ export function TeamDetailClientPage({ teamId }: { teamId: string }) {
         secondaryLabel="Open Rankings"
       />
 
+      <TeamViewTabs active={teamTab} onChange={setTeamTab} variant="league" />
+
+      {teamTab === "overview" && (
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_360px]">
         <div className="glass-panel rounded-[30px] p-5">
           <div className="flex items-center gap-3">
@@ -54,26 +64,27 @@ export function TeamDetailClientPage({ teamId }: { teamId: string }) {
 
           <div className="mt-5 space-y-3">
             {players.map((player, index) => (
-              <div key={player.id} className="flex items-center gap-4 rounded-[24px] border border-white/10 bg-slate-950/45 px-4 py-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm font-black text-white">
-                  {index + 1}
-                </div>
-                <Image
-                  src={getPlayerImage(player.name, player.role || undefined)}
-                  alt={player.name}
-                  width={56}
-                  height={56}
-                  className="h-14 w-14 rounded-2xl border border-white/15 bg-slate-950 object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-white">{player.name}</p>
-                  <p className="truncate text-xs text-slate-400">{player.role || "Player"} • {player.iplTeam || "Unassigned IPL side"}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Points</p>
-                  <p className="text-lg font-black text-cyan-200">{Math.round(getPlayerTotalPoints(player))}</p>
-                </div>
-              </div>
+              <ExpandableSquadPlayerRow
+                key={player.id}
+                player={player}
+                rank={index + 1}
+                isStarter={index < 11}
+                captainId={team.captainId}
+                viceCaptainId={team.viceCaptainId}
+                variant="league"
+                allowExpand={false}
+                countryFlag={
+                  getCountryFlag(player.country) ? (
+                    <Image
+                      src={getCountryFlag(player.country)!}
+                      alt={player.country || "India"}
+                      width={16}
+                      height={12}
+                      className="h-3 w-4 rounded object-cover shadow shrink-0"
+                    />
+                  ) : undefined
+                }
+              />
             ))}
           </div>
         </div>
@@ -118,6 +129,22 @@ export function TeamDetailClientPage({ teamId }: { teamId: string }) {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Budget Left</p>
                 <p className="mt-1 text-3xl font-black text-violet-200">{team.budget.toFixed(1)} Cr</p>
               </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Latest Match</p>
+                <p className="mt-1 text-3xl font-black text-cyan-200">{latestMatch ? Math.round(latestMatch.totalPoints) : 0}</p>
+                <p className="mt-1 text-xs text-slate-400">{latestMatch?.compactMatchLabel || "No match points yet"}</p>
+                {latestMatch && formatMatchDateLabel(latestMatch.startedAt) && (
+                  <p className="mt-1 text-[11px] text-slate-500">{formatMatchDateLabel(latestMatch.startedAt)}</p>
+                )}
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Previous Match</p>
+                <p className="mt-1 text-3xl font-black text-indigo-200">{previousMatch ? Math.round(previousMatch.totalPoints) : 0}</p>
+                <p className="mt-1 text-xs text-slate-400">{previousMatch?.compactMatchLabel || "Waiting for next score"}</p>
+                {previousMatch && formatMatchDateLabel(previousMatch.startedAt) && (
+                  <p className="mt-1 text-[11px] text-slate-500">{formatMatchDateLabel(previousMatch.startedAt)}</p>
+                )}
+              </div>
             </div>
             <Link
               href="/players"
@@ -128,6 +155,16 @@ export function TeamDetailClientPage({ teamId }: { teamId: string }) {
           </section>
         </aside>
       </section>
+      )}
+
+      {teamTab === "matches" && (
+        <MatchBreakdownPanel
+          title="Match History"
+          subtitle="Newest first. Dates reflect synced match starts when available."
+          matches={matches}
+          emptyMessage="Match totals for this squad will appear here once points are synced."
+        />
+      )}
     </div>
   );
 }

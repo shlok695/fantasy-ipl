@@ -13,47 +13,96 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { playerId, points, matchNumber, mode } = await request.json();
+    const body = await request.json();
+    const playerId = body.playerId;
+    const rawPoints = body.points;
+    const mode = body.mode ?? 'add';
+    let matchId = body.matchNumber ?? body.matchId ?? null;
 
-    if (!playerId || typeof points !== 'number') {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (typeof matchId === 'number') {
+      matchId = String(matchId);
     }
+
+    if (typeof matchId === 'string' && matchId.trim() === '') {
+      matchId = null;
+    }
+
+    const points = Number(rawPoints);
+
+    if (!playerId || !Number.isFinite(points)) {
+      return NextResponse.json({ error: "Missing or invalid required fields" }, { status: 400 });
+    }
+
+    if (mode !== 'add' && mode !== 'set') {
+      return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
+    }
+
+    const adminActor = session.user!.name || 'admin';
+    const sourceSet = `admin:manual-set:${adminActor}`;
+    const sourceAdd = `admin:manual-adjustment:${adminActor}`;
 
     const result = await prisma.$transaction(async (tx) => {
       let pointsRecord;
 
       if (mode === 'set') {
-        if (!matchNumber) {
+        if (!matchId) {
           throw new Error("Match number is required when editing an existing player score");
         }
 
         const existingRecord = await tx.playerPoints.findFirst({
           where: {
             playerId,
-            matchId: String(matchNumber)
+            matchId: String(matchId)
           }
         });
+
+        const previousPoints = existingRecord?.points;
+        const previousSource = existingRecord?.source;
 
         pointsRecord = existingRecord
           ? await tx.playerPoints.update({
               where: { id: existingRecord.id },
-              data: { points }
+              data: {
+                points,
+                breakdownJson: null,
+                statsJson: null,
+                scoreVersion: 'manual-override',
+                calculationHash: null,
+                source: sourceSet,
+              }
             })
           : await tx.playerPoints.create({
               data: {
                 playerId,
                 points,
-                matchId: String(matchNumber)
+                matchId: String(matchId),
+                scoreVersion: 'manual-override',
+                source: sourceSet,
               }
             });
+
+        console.info(
+          `[points/manual-override] actor=${adminActor} playerId=${playerId} matchId=${matchId} ` +
+            `previousPts=${previousPoints ?? 'n/a'} newPts=${points} previousSource=${previousSource ?? 'n/a'}`
+        );
       } else {
+        if (matchId) {
+          throw new Error("Add mode is only for manual adjustments without a match number. Use edit mode for match points.");
+        }
+
         pointsRecord = await tx.playerPoints.create({
           data: {
             playerId,
             points,
-            matchId: matchNumber ? String(matchNumber) : null
+            matchId: null,
+            scoreVersion: 'manual-adjustment',
+            source: sourceAdd,
           }
         });
+
+        console.info(
+          `[points/manual-adjustment] actor=${adminActor} playerId=${playerId} pts=${points}`
+        );
       }
 
       const player = await tx.player.findUnique({
@@ -68,9 +117,9 @@ export async function POST(request: Request) {
     });
 
     await recordAdminAudit(
-      session.user!.name || 'admin',
+      adminActor,
       mode === 'set' ? 'PLAYER_POINTS_EDIT' : 'PLAYER_POINTS_ADD',
-      `${playerId} m:${matchNumber ?? '-'} pts:${points}`
+      `${playerId} m:${matchId ?? '-'} pts:${points} by:${adminActor}`
     );
 
     return NextResponse.json({ success: true, record: result });

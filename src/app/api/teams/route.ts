@@ -29,7 +29,15 @@ export async function GET() {
             role: { not: 'IPL TEAM' }
           },
           include: {
-            points: true
+            points: {
+              include: {
+                match: true,
+              },
+              orderBy: [
+                { matchId: 'desc' },
+                { createdAt: 'desc' },
+              ],
+            }
           }
         }
       },

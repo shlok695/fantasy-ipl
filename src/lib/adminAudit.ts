@@ -13,9 +13,18 @@ export async function ensureAdminAuditTable() {
   `);
 }
 
-export async function recordAdminAudit(actor: string, action: string, details: string) {
+const DEFAULT_AUDIT_DETAILS_MAX = 180;
+const EXTENDED_AUDIT_DETAILS_MAX = 900;
+
+export async function recordAdminAudit(
+  actor: string,
+  action: string,
+  details: string,
+  options?: { maxDetailsLength?: number }
+) {
   await ensureAdminAuditTable();
-  const trimmedDetails = details.trim().slice(0, 180);
+  const maxLen = options?.maxDetailsLength ?? DEFAULT_AUDIT_DETAILS_MAX;
+  const trimmedDetails = details.trim().slice(0, maxLen);
 
   await prisma.$executeRawUnsafe(
     `INSERT INTO "AdminAuditLog" ("id", "actor", "action", "details") VALUES (?, ?, ?, ?)`,
@@ -24,6 +33,10 @@ export async function recordAdminAudit(actor: string, action: string, details: s
     action.trim().slice(0, 60),
     trimmedDetails
   );
+}
+
+export async function recordAdminAuditExtended(actor: string, action: string, details: string) {
+  return recordAdminAudit(actor, action, details, { maxDetailsLength: EXTENDED_AUDIT_DETAILS_MAX });
 }
 
 export async function listAdminAudit(limit = 80) {
@@ -53,6 +66,22 @@ export async function hasAdminAuditAction(action: string) {
      WHERE "action" = ?
      LIMIT 1`,
     action
+  );
+
+  return rows.length > 0;
+}
+
+export async function hasAdminAuditEntry(action: string, detailsFragment: string) {
+  await ensureAdminAuditTable();
+
+  const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    `SELECT "id"
+     FROM "AdminAuditLog"
+     WHERE "action" = ?
+       AND instr(lower("details"), lower(?)) > 0
+     LIMIT 1`,
+    action,
+    detailsFragment
   );
 
   return rows.length > 0;

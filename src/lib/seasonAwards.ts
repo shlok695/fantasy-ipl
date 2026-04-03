@@ -28,19 +28,25 @@ function sumMetric(player: PlayerWithPoints, metric: "points" | "runs" | "wicket
   return (player.points || []).reduce((sum, entry) => sum + (entry?.[metric] || 0), 0);
 }
 
-function pickLeader(players: PlayerWithPoints[], metric: "points" | "runs" | "wickets", tieBreaker: "points" | "runs") {
+function pickLeader(
+  players: PlayerWithPoints[],
+  metric: "points" | "runs" | "wickets",
+  tieBreaker?: "points" | "runs"
+) {
   return [...players]
     .map((player) => ({
       player,
       metricValue: sumMetric(player, metric),
-      tieBreakerValue: sumMetric(player, tieBreaker),
+      tieBreakerValue: tieBreaker ? sumMetric(player, tieBreaker) : 0,
     }))
     .sort((left, right) => {
       const metricDelta = right.metricValue - left.metricValue;
       if (metricDelta !== 0) return metricDelta;
 
-      const tieBreakerDelta = right.tieBreakerValue - left.tieBreakerValue;
-      if (tieBreakerDelta !== 0) return tieBreakerDelta;
+      if (tieBreaker) {
+        const tieBreakerDelta = right.tieBreakerValue - left.tieBreakerValue;
+        if (tieBreakerDelta !== 0) return tieBreakerDelta;
+      }
 
       return left.player.name.localeCompare(right.player.name) || left.player.id.localeCompare(right.player.id);
     })[0];
@@ -52,8 +58,8 @@ export function getSeasonAwardWinners(players: PlayerWithPoints[]): AwardWinner[
     return [];
   }
 
-  const orangeCap = pickLeader(eligiblePlayers, "runs", "points");
-  const purpleCap = pickLeader(eligiblePlayers, "wickets", "points");
+  const orangeCap = pickLeader(eligiblePlayers, "runs");
+  const purpleCap = pickLeader(eligiblePlayers, "wickets");
   const mvp = pickLeader(eligiblePlayers, "points", "runs");
 
   return [

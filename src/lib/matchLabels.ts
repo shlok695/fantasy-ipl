@@ -1,5 +1,12 @@
 type MatchLabelFormat = "compact" | "standard" | "full";
 
+interface MatchLabelOverrideMeta {
+  displayId?: string | null;
+  shortTitle?: string | null;
+  title?: string | null;
+  season?: string | null;
+}
+
 interface MatchLabelMeta {
   season: string;
   matchNumber?: number;
@@ -74,30 +81,47 @@ function formatTeams(teams?: [string, string]) {
   return teams ? `${teams[0]} vs ${teams[1]}` : null;
 }
 
-export function formatMatchLabel(matchId?: string | null, format: MatchLabelFormat = "standard") {
+export function formatMatchLabel(
+  matchId?: string | null,
+  format: MatchLabelFormat = "standard",
+  overrideMeta?: MatchLabelOverrideMeta | null
+) {
   if (!matchId) {
     return "Match Update";
   }
 
   const meta = MATCH_LABELS[matchId];
-  const compactTeams = formatTeams(meta?.shortTeams);
-  const fullTeams = formatTeams(meta?.fullTeams);
+
+  const compactFromDb =
+    overrideMeta?.displayId?.trim() ||
+    overrideMeta?.shortTitle?.trim() ||
+    null;
+  const fullFromDb =
+    overrideMeta?.title?.trim() || compactFromDb || null;
+
+  const compactFromHardcoded = formatTeams(meta?.shortTeams);
+  const fullFromHardcoded = formatTeams(meta?.fullTeams);
+
+  const compactLabel =
+    compactFromDb || compactFromHardcoded || fullFromHardcoded || matchId;
+  const fullLabel =
+    fullFromDb || fullFromHardcoded || compactFromHardcoded || matchId;
 
   if (format === "compact") {
-    return compactTeams || fullTeams || matchId;
+    return compactLabel;
   }
 
   if (format === "full") {
-    if (meta?.matchNumber && fullTeams) {
-      return `${meta.season} Match ${meta.matchNumber} · ${fullTeams}`;
+    if (meta?.matchNumber && fullLabel) {
+      const season = overrideMeta?.season?.trim() || meta.season;
+      return `${season} Match ${meta.matchNumber} · ${fullLabel}`;
     }
-    return fullTeams || compactTeams || matchId;
+    return fullLabel;
   }
 
-  if (meta?.matchNumber && compactTeams) {
-    return `Match ${meta.matchNumber} · ${compactTeams}`;
+  if (meta?.matchNumber && compactLabel) {
+    return `Match ${meta.matchNumber} · ${compactLabel}`;
   }
 
-  return compactTeams || fullTeams || matchId;
+  return compactLabel;
 }
-

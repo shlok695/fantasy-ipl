@@ -3,9 +3,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Shield, Plus, TrendingUp, Zap, RefreshCw, CheckCircle, AlertCircle, Search, Trophy, PencilLine, Users, ScrollText, Award } from 'lucide-react';
 import { basePath } from '@/lib/basePath';
+import { MatchBreakdownPanel } from '@/components/team/MatchBreakdownPanel';
+import { PointsBreakdownTable } from '@/components/team/PointsBreakdownTable';
+import { getPlayerPointHistory, getPointEntryMatchLabel, getTeamMatchBreakdowns } from '@/lib/teamHistory';
 
 function getPlayerTotalPoints(player: any) {
   return (player?.points || []).reduce((sum: number, entry: any) => sum + (entry?.points || 0), 0);
+}
+
+function getBreakdownSummary(entry: any) {
+  if (!entry?.breakdownJson) {
+    return entry?.source || 'Stored points';
+  }
+
+  try {
+    const parsed = JSON.parse(entry.breakdownJson);
+    const lines = Array.isArray(parsed?.lines) ? parsed.lines : [];
+    const summary = lines.map((line: any) => `${line.label}: ${line.value > 0 ? '+' : ''}${line.value}`);
+    if (parsed?.multiplierValue && parsed.multiplierValue !== 1) {
+      summary.push(`${parsed.multiplierLabel} x${parsed.multiplierValue}`);
+    }
+    return summary.join(' • ');
+  } catch {
+    return entry?.source || 'Stored points';
+  }
 }
 
 export default function PointsAdmin() {
@@ -29,18 +50,24 @@ export default function PointsAdmin() {
   const [liveSyncConfig, setLiveSyncConfig] = useState({
     matchId: '',
     matchStartAt: '',
-    afterOverMinutes: '6',
-    intervalMs: '60000',
+    afterOverMinutes: '60',
+    intervalMs: '1800000',
     enabled: false,
   });
   const [liveSyncSaving, setLiveSyncSaving] = useState(false);
   const [detectedLiveMatch, setDetectedLiveMatch] = useState<any>(null);
+  const [detectionError, setDetectionError] = useState<string | null>(null);
+  const [showLiveDebug, setShowLiveDebug] = useState(false);
+  const [liveDetectionLoading, setLiveDetectionLoading] = useState(false);
+  const [lastLiveDetectionAt, setLastLiveDetectionAt] = useState<string | null>(null);
+  const [franchiseBreakdownTeam, setFranchiseBreakdownTeam] = useState<any>(null);
   const IPL_TEAMS = ['CSK', 'DC', 'GT', 'KKR', 'LSG', 'MI', 'PBKS', 'RR', 'RCB', 'SRH'];
   const seasonAwardsApplied = auditLogs.some((log) => log.action === 'SEASON_AWARDS_APPLIED');
 
-  const fetchSoldPlayers = async () => {
+  const fetchPlayers = async () => {
     try {
-      const res = await fetch(`${basePath}/api/players?status=sold&q=${search}`, { cache: 'no-store' });
+      const query = search.trim() ? `?q=${encodeURIComponent(search.trim())}` : '';
+      const res = await fetch(`${basePath}/api/players${query}`, { cache: 'no-store' });
       const data = await res.json();
       setPlayers(data);
     } catch (e) {
@@ -68,30 +95,46 @@ export default function PointsAdmin() {
     }
   };
 
-  const fetchLiveSyncConfig = async () => {
+  const fetchLiveSyncConfig = async (
+    { silent = false, forceRefresh = false }: { silent?: boolean; forceRefresh?: boolean } = {}
+  ) => {
+    if (!silent) {
+      setLiveDetectionLoading(true);
+    }
+
     try {
-      const res = await fetch(`${basePath}/api/admin/live-sync`, { cache: 'no-store' });
+      const query = forceRefresh ? '?refresh=1' : '';
+      const res = await fetch(`${basePath}/api/admin/live-sync${query}`, { cache: 'no-store' });
       const data = await res.json();
       if (res.ok && data.config) {
         setLiveSyncConfig({
           matchId: data.config.matchId || '',
           matchStartAt: data.config.matchStartAt || '',
-          afterOverMinutes: String(data.config.afterOverMinutes ?? 6),
-          intervalMs: String(data.config.intervalMs ?? 60000),
+          afterOverMinutes: String(data.config.afterOverMinutes ?? 60),
+          intervalMs: String(data.config.intervalMs ?? 1800000),
           enabled: Boolean(data.config.enabled),
         });
         if (data.config.matchId) {
           setMatchIdSync(data.config.matchId);
         }
         setDetectedLiveMatch(data.detectedMatch || null);
+        setDetectionError(null);
+        setLastLiveDetectionAt(new Date().toISOString());
+      } else {
+        setDetectionError(data.error || 'Failed to fetch live sync config');
       }
     } catch (e) {
       console.error(e);
+      setDetectionError('System error connection to sync API');
+    } finally {
+      if (!silent) {
+        setLiveDetectionLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchSoldPlayers();
+    fetchPlayers();
   }, [search]);
 
   useEffect(() => {
@@ -117,18 +160,95 @@ export default function PointsAdmin() {
     }
   }, [selectedTeam]);
 
+  useEffect(() => {
+    if (!selectedPlayer) {
+      return;
+    }
+
+    const refreshedPlayer = players.find((player) => player.id === selectedPlayer.id) || null;
+
+    if (!refreshedPlayer) {
+      setSelectedPlayer(null);
+      return;
+    }
+
+    if (refreshedPlayer !== selectedPlayer) {
+      setSelectedPlayer(refreshedPlayer);
+    }
+  }, [players, selectedPlayer]);
+
+  useEffect(() => {
+    if (!selectedTeam) {
+      return;
+    }
+
+    const refreshedTeam = teams.find((team) => team.id === selectedTeam.id) || null;
+
+    if (!refreshedTeam) {
+      setSelectedTeam(null);
+      return;
+    }
+
+    if (refreshedTeam !== selectedTeam) {
+      setSelectedTeam(refreshedTeam);
+    }
+  }, [teams, selectedTeam]);
+
+  useEffect(() => {
+    if (!franchiseBreakdownTeam) {
+      return;
+    }
+
+    const refreshed = teams.find((team) => team.id === franchiseBreakdownTeam.id) || null;
+
+    if (!refreshed) {
+      setFranchiseBreakdownTeam(null);
+      return;
+    }
+
+    if (refreshed !== franchiseBreakdownTeam) {
+      setFranchiseBreakdownTeam(refreshed);
+    }
+  }, [teams, franchiseBreakdownTeam]);
+
   const playerMatchHistory = useMemo(() => {
-    if (!selectedPlayer) return [];
-    return [...(selectedPlayer.points || [])].sort((a: any, b: any) => {
-      const aNum = Number(a.matchId || 0);
-      const bNum = Number(b.matchId || 0);
-      return aNum - bNum;
-    });
+    return getPlayerPointHistory(selectedPlayer);
   }, [selectedPlayer]);
+
+  const franchiseMatchBreakdowns = useMemo(() => {
+    return getTeamMatchBreakdowns(franchiseBreakdownTeam);
+  }, [franchiseBreakdownTeam]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPlayer || !points) return;
+    if (!selectedPlayer) return;
+
+    const pointsValue = Number(points);
+    const hasMatchNumber = matchNumber.trim() !== '';
+    const matchNumberValue = hasMatchNumber ? Number(matchNumber) : null;
+
+    if (!Number.isFinite(pointsValue)) {
+      alert('Invalid points value');
+      return;
+    }
+
+    if (playerMode === 'set' && !hasMatchNumber) {
+      alert('Match number is required when editing points');
+      return;
+    }
+
+    if (
+      hasMatchNumber &&
+      (matchNumberValue === null || !Number.isInteger(matchNumberValue) || matchNumberValue < 0)
+    ) {
+      alert('Invalid match number');
+      return;
+    }
+
+    if (playerMode === 'add' && hasMatchNumber) {
+      alert('Add mode is only for manual adjustments without a match number. Use Edit Match Points for match scoring changes.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -137,8 +257,8 @@ export default function PointsAdmin() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           playerId: selectedPlayer.id,
-          points: parseFloat(points),
-          matchNumber: matchNumber ? parseInt(matchNumber) : null,
+          points: pointsValue,
+          matchNumber: hasMatchNumber ? matchNumberValue : null,
           mode: playerMode
         })
       });
@@ -154,7 +274,7 @@ export default function PointsAdmin() {
       if (playerMode === 'add') {
         setMatchNumber('');
       }
-      await fetchSoldPlayers();
+      await fetchPlayers();
       await fetchTeams();
       await fetchAuditLogs();
     } catch (e) {
@@ -211,9 +331,12 @@ export default function PointsAdmin() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to sync');
 
-      setSyncMessage({ type: 'success', text: data.message });
+      const providerLabel = data.provider ? ` Provider: ${String(data.provider).toUpperCase()}.` : '';
+      const fallbackLabel = data.fallbackReason ? ` Fallback trigger: ${data.fallbackReason}` : '';
+      const zeroMatchLabel = data.playersMatched === 0 ? ' No player names matched your local squad, so frontend totals will stay unchanged until names map correctly.' : '';
+      setSyncMessage({ type: 'success', text: `${data.message}${providerLabel}${fallbackLabel}${zeroMatchLabel}` });
       setMatchIdSync('');
-      await fetchSoldPlayers();
+      await fetchPlayers();
       await fetchTeams();
       await fetchAuditLogs();
     } catch (err: any) {
@@ -305,8 +428,8 @@ export default function PointsAdmin() {
       setLiveSyncConfig({
         matchId: data.config.matchId || '',
         matchStartAt: data.config.matchStartAt || '',
-        afterOverMinutes: String(data.config.afterOverMinutes ?? 6),
-        intervalMs: String(data.config.intervalMs ?? 60000),
+        afterOverMinutes: String(data.config.afterOverMinutes ?? 60),
+        intervalMs: String(data.config.intervalMs ?? 1800000),
         enabled: Boolean(data.config.enabled),
       });
       setMatchIdSync(data.config.matchId || '');
@@ -327,6 +450,51 @@ export default function PointsAdmin() {
         </div>
         <h1 className="text-2xl sm:text-4xl font-black text-white text-center">Admin Points Manager</h1>
         <p className="text-sm sm:text-base text-gray-400 text-center max-w-2xl">Edit player points, team bonus points, and sync match scoring without disturbing the leaderboard rules.</p>
+      </div>
+
+      <div className="glass-card p-4 sm:p-6 border border-white/5 bg-gradient-to-r from-violet-500/10 to-transparent">
+        <div className="flex items-center gap-3 mb-4 sm:mb-6">
+          <div className="p-2.5 sm:p-3 bg-violet-500/20 rounded-full text-violet-300">
+            <Users size={20} className="sm:w-6 sm:h-6" />
+          </div>
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold">Franchise match breakdown</h2>
+            <p className="text-xs sm:text-sm text-gray-400">
+              Inspect any franchise&apos;s full match-by-match scoring (same data players see on the team page). Open the audit doc when it exists under <code className="text-violet-300/90">docs/match-&#123;id&#125;-calculations.md</code>.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-6">
+          {teams.map((team) => (
+            <button
+              key={team.id}
+              type="button"
+              onClick={() => setFranchiseBreakdownTeam(team)}
+              className={`rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${
+                franchiseBreakdownTeam?.id === team.id
+                  ? 'border-violet-400/50 bg-violet-500/20 text-white'
+                  : 'border-white/10 bg-black/20 text-gray-300 hover:border-violet-500/30'
+              }`}
+            >
+              {team.name}
+            </button>
+          ))}
+        </div>
+
+        {franchiseBreakdownTeam ? (
+          <MatchBreakdownPanel
+            title={`${franchiseBreakdownTeam.name} — scoring history`}
+            subtitle="Aggregated from all squad players with a match id. Audit links open the generated calculation log (admin-only)."
+            matches={franchiseMatchBreakdowns}
+            emptyMessage="No match-scored points for this franchise yet."
+            showAuditLink
+          />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
+            Select a franchise above to load its full match breakdown.
+          </div>
+        )}
       </div>
 
       <div className="glass-card p-4 sm:p-6 border border-white/5 bg-gradient-to-r from-indigo-500/10 to-transparent">
@@ -376,8 +544,16 @@ export default function PointsAdmin() {
           </div>
           <div>
             <h2 className="text-lg sm:text-xl font-bold">Auto Live Sync Settings</h2>
-            <p className="text-xs sm:text-sm text-gray-400">Store the current live match in the app so sync starts automatically after one over.</p>
+            <p className="text-xs sm:text-sm text-gray-400">For strict quota mode, pin the detected match and start time. The worker will then sync at 4 scheduled checkpoints only.</p>
           </div>
+          <button
+            type="button"
+            onClick={() => fetchLiveSyncConfig({ forceRefresh: true })}
+            disabled={liveDetectionLoading}
+            className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"
+          >
+            {liveDetectionLoading ? 'Refreshing...' : 'Refresh Detection'}
+          </button>
         </div>
 
         <form onSubmit={saveLiveSyncConfig} className="space-y-4">
@@ -398,9 +574,10 @@ export default function PointsAdmin() {
                 type="text"
                 value={liveSyncConfig.matchId}
                 onChange={(e) => setLiveSyncConfig((current) => ({ ...current, matchId: e.target.value }))}
-                placeholder="e.g. 12345"
+                placeholder="Optional: leave blank for auto-detect"
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base font-mono"
               />
+              <p className="mt-1 text-[11px] text-gray-500">Use the detected match button below, then save. Blank match IDs are not used for 4-hit quota mode.</p>
             </div>
             <div>
               <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Match Start Time</label>
@@ -410,6 +587,7 @@ export default function PointsAdmin() {
                 onChange={(e) => setLiveSyncConfig((current) => ({ ...current, matchStartAt: e.target.value }))}
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base"
               />
+              <p className="mt-1 text-[11px] text-gray-500">Required for 4-hit quota mode. IPL starts are usually 3:30 PM IST or 7:30 PM IST.</p>
             </div>
           </div>
 
@@ -423,7 +601,7 @@ export default function PointsAdmin() {
                 onChange={(e) => setLiveSyncConfig((current) => ({ ...current, afterOverMinutes: e.target.value }))}
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base font-mono"
               />
-              <p className="mt-1 text-[11px] text-gray-500">Default is 6 minutes, roughly one over.</p>
+              <p className="mt-1 text-[11px] text-gray-500">First sync checkpoint in minutes after match start. Default is 60 minutes, roughly 10 overs.</p>
             </div>
             <div>
               <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Retry Interval (ms)</label>
@@ -438,30 +616,89 @@ export default function PointsAdmin() {
             </div>
           </div>
 
-          {detectedLiveMatch ? (
-            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-              <p className="font-bold">Detected live IPL match from API</p>
-              <p className="mt-1">{detectedLiveMatch.name || detectedLiveMatch.id}</p>
-              <p className="mt-1 text-xs text-emerald-200/80">
-                Match ID: {detectedLiveMatch.id} • Overs: {detectedLiveMatch.overs} • {detectedLiveMatch.status || 'Live'}
+          <p className="text-[11px] text-gray-500">
+            {lastLiveDetectionAt
+              ? `Live match detection only checks on page load or when you press refresh. Last checked: ${new Date(lastLiveDetectionAt).toLocaleTimeString()}`
+              : 'Live match detection only checks on page load or when you press refresh.'}
+          </p>
+
+          {detectedLiveMatch && (
+            <div className={`rounded-xl border ${detectedLiveMatch.overs < 10 && detectedLiveMatch.status !== 'Finished' ? 'border-amber-400/20 bg-amber-400/10 text-amber-100' : 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100'} px-4 py-3 text-sm`}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-bold">Detected IPL match from API</p>
+                <div className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${detectedLiveMatch.status === 'Finished' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-black animate-pulse'}`}>
+                  {detectedLiveMatch.status || 'Live'}
+                </div>
+              </div>
+              <p className="mt-1 font-mono text-xs opacity-80">{detectedLiveMatch.name || detectedLiveMatch.id}</p>
+              <p className="mt-1 text-xs opacity-70">
+                Match ID: {detectedLiveMatch.id} • Overs: {detectedLiveMatch.overs} • {detectedLiveMatch.provider ? String(detectedLiveMatch.provider).toUpperCase() : 'CricAPI'}
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setLiveSyncConfig((current) => ({
-                    ...current,
-                    enabled: true,
-                    matchId: String(detectedLiveMatch.id || ''),
-                    matchStartAt: detectedLiveMatch.dateTimeGMT ? String(detectedLiveMatch.dateTimeGMT).slice(0, 16) : current.matchStartAt,
-                  }));
-                  setMatchIdSync(String(detectedLiveMatch.id || ''));
-                }}
-                className="mt-3 rounded-lg bg-emerald-400 px-3 py-2 text-xs font-black text-slate-950"
-              >
-                Use Detected Match
-              </button>
+              {(detectedLiveMatch.seriesName || detectedLiveMatch.matchType) && (
+                <p className="mt-1 text-xs opacity-70">
+                  {detectedLiveMatch.seriesName || 'Unknown series'}{detectedLiveMatch.matchType ? ` • ${detectedLiveMatch.matchType}` : ''}
+                </p>
+              )}
+              {detectedLiveMatch.overs < 10 && detectedLiveMatch.status !== 'Finished' && (
+                <p className="mt-2 text-[11px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                  <RefreshCw size={12} className="animate-spin" /> Waiting for the first scheduled sync checkpoint after 10 overs.
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLiveSyncConfig((current) => ({
+                      ...current,
+                      enabled: true,
+                      matchId: String(detectedLiveMatch.id || ''),
+                      matchStartAt: detectedLiveMatch.dateTimeGMT ? String(detectedLiveMatch.dateTimeGMT).slice(0, 16) : current.matchStartAt,
+                    }));
+                    setMatchIdSync(String(detectedLiveMatch.id || ''));
+                  }}
+                  className="rounded-lg bg-emerald-400 px-3 py-2 text-xs font-black text-slate-950"
+                >
+                  Use Detected Match
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLiveDebug((current) => !current)}
+                  className="rounded-lg border border-white/15 bg-black/20 px-3 py-2 text-xs font-black text-white"
+                >
+                  {showLiveDebug ? 'Hide API Debug' : 'Show API Debug'}
+                </button>
+              </div>
+              {showLiveDebug && (
+                <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-cyan-300">API Debug Snapshot</p>
+                  <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-cyan-100">
+                    {JSON.stringify({
+                      provider: detectedLiveMatch.provider || null,
+                      matchId: detectedLiveMatch.id || null,
+                      seriesId: detectedLiveMatch.seriesId || null,
+                      seriesName: detectedLiveMatch.seriesName || null,
+                      matchType: detectedLiveMatch.matchType || null,
+                      status: detectedLiveMatch.status || null,
+                      overs: detectedLiveMatch.overs ?? null,
+                      score: detectedLiveMatch.score || [],
+                      debugPayload: detectedLiveMatch.debugPayload || null,
+                    }, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
-          ) : (
+          )}
+
+          {detectionError && (
+            <div className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-300">
+              <p className="font-bold flex items-center gap-2 tracking-widest uppercase text-[10px]">
+                <AlertCircle size={14} /> Detection Engine Error
+              </p>
+              <p className="mt-1">{detectionError}</p>
+            </div>
+          )}
+
+          {!detectedLiveMatch && !detectionError && (
             <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-gray-400">
               No live IPL match was detected from the API right now.
             </div>
@@ -480,13 +717,13 @@ export default function PointsAdmin() {
       <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-8">
         <div className="glass-card p-4 sm:p-6 h-auto xl:h-[70vh] flex flex-col">
           <h2 className="text-sm sm:text-lg font-bold mb-4 flex items-center gap-2">
-            <TrendingUp size={18} className="sm:w-5 sm:h-5 text-indigo-400" /> Select Sold Player
+            <TrendingUp size={18} className="sm:w-5 sm:h-5 text-indigo-400" /> Select Any Player
           </h2>
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
-              placeholder="Search sold players..."
+              placeholder="Search all players..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 sm:py-2.5 text-sm sm:text-base text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -494,7 +731,7 @@ export default function PointsAdmin() {
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 sm:pr-2 custom-scrollbar">
-            {players.length === 0 && <p className="text-center text-gray-500 py-6 text-xs sm:text-sm">No sold players found</p>}
+            {players.length === 0 && <p className="text-center text-gray-500 py-6 text-xs sm:text-sm">No players found</p>}
             {players.map((player) => (
               <button
                 key={player.id}
@@ -508,7 +745,9 @@ export default function PointsAdmin() {
                 <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(player.name)}&background=random&color=fff&size=128&bold=true`} alt={player.name} className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl border border-white/10 shrink-0 object-cover" />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-sm sm:text-base text-white truncate">{player.name}</p>
-                  <p className="text-[9px] sm:text-[10px] text-indigo-400 font-bold uppercase tracking-wider truncate">Team: {player.user?.name}</p>
+                  <p className="text-[9px] sm:text-[10px] text-indigo-400 font-bold uppercase tracking-wider truncate">
+                    {player.user?.name ? `Team: ${player.user.name}` : player.acquisition === 'External' ? 'External match record' : 'Unsold / no owner'}
+                  </p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Total</p>
@@ -527,16 +766,29 @@ export default function PointsAdmin() {
                   <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(selectedPlayer.name)}&background=random&color=fff&size=256&bold=true`} alt={selectedPlayer.name} className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white/10 shadow-xl" />
                   <div>
                     <h3 className="text-xl sm:text-2xl font-black text-emerald-400 mb-0.5">{selectedPlayer.name}</h3>
-                    <p className="text-[10px] sm:text-xs text-gray-400 font-bold uppercase tracking-widest">{selectedPlayer.user?.name}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-400 font-bold uppercase tracking-widest">
+                      {selectedPlayer.user?.name || (selectedPlayer.acquisition === 'External' ? 'External match record' : 'Unsold / no owner')}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">Current total: {getPlayerTotalPoints(selectedPlayer)} points</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 p-1 bg-black/20">
-                  <button type="button" onClick={() => setPlayerMode('add')} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${playerMode === 'add' ? 'bg-indigo-500 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
-                    Add Match Points
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlayerMode('add');
+                      setMatchNumber('');
+                    }}
+                    className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${playerMode === 'add' ? 'bg-indigo-500 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                  >
+                    Add Manual Adjustment
                   </button>
-                  <button type="button" onClick={() => setPlayerMode('set')} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${playerMode === 'set' ? 'bg-amber-500 text-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setPlayerMode('set')}
+                    className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${playerMode === 'set' ? 'bg-amber-500 text-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                  >
                     Edit Match Points
                   </button>
                 </div>
@@ -548,14 +800,20 @@ export default function PointsAdmin() {
                       type="number"
                       value={matchNumber}
                       onChange={(e) => setMatchNumber(e.target.value)}
-                      placeholder={playerMode === 'set' ? 'Required to edit existing score' : 'Optional (e.g. 1)'}
+                      placeholder={playerMode === 'set' ? 'Required to edit existing score' : 'Disabled for manual adjustments'}
+                      disabled={playerMode === 'add'}
                       className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm sm:text-base"
                     />
+                    <p className="mt-2 text-[11px] text-gray-500">
+                      {playerMode === 'set'
+                        ? 'Use this to edit the saved points for a specific match.'
+                        : 'Manual adjustments are stored without a match number and should not be used for match scoring fixes.'}
+                    </p>
                   </div>
 
                   <div>
                     <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">
-                      {playerMode === 'set' ? 'Set Match Points' : 'Add Points'}
+                      {playerMode === 'set' ? 'Set Match Points' : 'Add Manual Adjustment'}
                     </label>
                     <div className="relative">
                       <Trophy className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500/50" size={24} />
@@ -565,7 +823,7 @@ export default function PointsAdmin() {
                         step="0.5"
                         value={points}
                         onChange={(e) => setPoints(e.target.value)}
-                        placeholder="e.g. 50"
+                        placeholder={playerMode === 'set' ? 'e.g. 50' : 'e.g. 5 bonus points'}
                         className="w-full bg-black/40 border border-white/10 rounded-xl pl-12 pr-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-black text-2xl sm:text-3xl"
                       />
                     </div>
@@ -577,30 +835,43 @@ export default function PointsAdmin() {
                   disabled={loading}
                   className="w-full py-4 sm:py-5 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white font-black text-lg sm:text-xl shadow-2xl shadow-indigo-500/40 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
                 >
-                  {loading ? 'Processing...' : playerMode === 'set' ? <><PencilLine size={20} /> Save Player Edit</> : <><Plus size={20} /> Add Player Points</>}
+                  {loading ? 'Processing...' : playerMode === 'set' ? <><PencilLine size={20} /> Save Player Edit</> : <><Plus size={20} /> Add Manual Adjustment</>}
                 </button>
 
                 <div className="border-t border-white/10 pt-4">
-                  <h4 className="text-sm font-bold text-gray-300 mb-3">Recorded Match Points</h4>
-                  <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                  <h4 className="text-sm font-bold text-gray-300 mb-3">Recorded Match Points & Calculations</h4>
+                  <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
                     {playerMatchHistory.length === 0 && <p className="text-xs text-gray-500">No recorded match points yet.</p>}
                     {playerMatchHistory.map((entry: any) => (
-                      <button
-                        type="button"
+                      <div
                         key={entry.id}
-                        onClick={() => {
-                          setPlayerMode('set');
-                          setMatchNumber(entry.matchId || '');
-                          setPoints(String(entry.points));
-                        }}
-                        className="w-full bg-black/20 hover:bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center justify-between transition-colors text-left"
+                        className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-3 text-left"
                       >
-                        <div>
-                          <p className="text-sm font-bold text-white">Match {entry.matchId || 'Manual'}</p>
-                          <p className="text-[10px] uppercase tracking-widest text-gray-500">Tap to edit</p>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white">{entry.matchId ? getPointEntryMatchLabel(entry, 'standard') : 'Manual Adjustment'}</p>
+                            <p className="mt-1 text-[10px] uppercase tracking-widest text-gray-500">
+                              {entry.match?.displayId || entry.matchId || 'Manual'} • {entry.scoreVersion || 'legacy'} • tap to edit
+                            </p>
+                            <p className="mt-2 text-xs leading-6 text-gray-400">{getBreakdownSummary(entry)}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-black text-emerald-300">{entry.points} pts</p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPlayerMode('set');
+                                setMatchNumber(entry.matchId || '');
+                                setPoints(String(entry.points));
+                              }}
+                              className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-200 transition-colors hover:bg-amber-400/20"
+                            >
+                              Edit
+                            </button>
+                          </div>
                         </div>
-                        <p className="text-sm font-black text-emerald-300">{entry.points} pts</p>
-                      </button>
+                        <PointsBreakdownTable breakdownJson={entry.breakdownJson} />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -608,8 +879,8 @@ export default function PointsAdmin() {
             ) : (
               <div className="text-center text-gray-500 p-8 sm:p-12 flex flex-col items-center justify-center border-2 border-dashed border-white/5 rounded-3xl">
                 <Zap size={48} className="text-gray-600 opacity-20 mb-4 sm:w-16 sm:h-16" />
-                <p className="text-lg sm:text-xl font-black text-white/20">Select a sold player</p>
-                <p className="text-xs sm:text-sm text-gray-600">to add or edit player points</p>
+                <p className="text-lg sm:text-xl font-black text-white/20">Select any player</p>
+                <p className="text-xs sm:text-sm text-gray-600">to inspect calculations or edit points</p>
               </div>
             )}
           </div>

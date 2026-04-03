@@ -59,9 +59,39 @@ model PlayerPoints {
   ballsFaced        Int               @default(0)
   wickets           Int               @default(0)
   dotBalls          Int               @default(0)
+  breakdownJson     String?
+  statsJson         String?
+  scoreVersion      String?
+  calculationHash   String?
+  source            String?
   createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @default(now()) @updatedAt
   player            Player            @relation(fields: [playerId], references: [id])
+  match             Match?            @relation(fields: [matchId], references: [id])
   simulationBatch   SimulationBatch?  @relation(fields: [simulationBatchId], references: [id], onDelete: SetNull)
+
+  @@index([matchId])
+  @@unique([playerId, matchId])
+}
+
+model Match {
+  id         String         @id
+  displayId  String?
+  shortTitle String?
+  title      String?
+  season     String?
+  status     String?
+  team1Code  String?
+  team2Code  String?
+  team1Name  String?
+  team2Name  String?
+  source     String?
+  startedAt  DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  playerPoints PlayerPoints[]
+
+  @@index([displayId])
 }
 
 model AuctionState {
@@ -97,4 +127,11 @@ model SimulationTeamBonusAdjustment {
   createdAt         DateTime         @default(now())
   simulationBatch   SimulationBatch  @relation(fields: [simulationBatchId], references: [id], onDelete: Cascade)
   user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LiveMatchState {
+  id            String   @id
+  rawPayload    String   
+  processedHash String   
+  lastUpdated   DateTime @default(now())
 }

@@ -10,9 +10,14 @@ export async function GET(request: Request) {
 
   if (status === 'upcoming') {
     whereClause.userId = null;
-    whereClause.OR = [
-      { acquisition: null },
-      { acquisition: { not: 'Unsold' } }
+    whereClause.AND = [
+      { NOT: { acquisition: 'External' } },
+      {
+        OR: [
+          { acquisition: null },
+          { acquisition: { not: 'Unsold' } }
+        ],
+      },
     ];
   } else if (status === 'passed') {
     whereClause.userId = null;
@@ -30,7 +35,15 @@ export async function GET(request: Request) {
       where: whereClause,
       include: {
         user: true,
-        points: true,
+        points: {
+          include: {
+            match: true,
+          },
+          orderBy: [
+            { matchId: 'desc' },
+            { createdAt: 'desc' },
+          ],
+        },
       },
       orderBy: { number: 'asc' },
     });

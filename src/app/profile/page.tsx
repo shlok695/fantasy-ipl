@@ -34,8 +34,13 @@ export default function ProfilePage() {
     const fetchTeam = async () => {
       try {
         const res = await fetch(`${basePath}/api/teams`, { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error(`Team request failed with ${res.status}`);
+        }
+
         const data = await res.json();
-        const myTeam = data.find((entry: any) => entry.id === (session.user as any).id) || null;
+        const teams = Array.isArray(data) ? data : [];
+        const myTeam = teams.find((entry: any) => entry.id === (session.user as any).id) || null;
         setTeam(myTeam);
       } catch (error) {
         console.error(error);

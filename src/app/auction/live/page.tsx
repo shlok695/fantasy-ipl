@@ -33,6 +33,11 @@ export default function LiveAuctionRoom() {
         setLiveRoomHidden(true);
         return;
       }
+
+      if (!res.ok) {
+        throw new Error(`Live state request failed with ${res.status}`);
+      }
+
       const data = await res.json();
       if (data.state) {
         setLiveRoomHidden(false);
@@ -46,8 +51,16 @@ export default function LiveAuctionRoom() {
   const fetchTeams = async () => {
     try {
       const res = await fetch(`${basePath}/api/teams`);
-      setTeams(await res.json());
-    } catch(e) {}
+      if (!res.ok) {
+        throw new Error(`Team request failed with ${res.status}`);
+      }
+
+      const data = await res.json();
+      setTeams(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Team sync failed", e);
+      setTeams([]);
+    }
   };
 
   const fetchStats = async () => {
@@ -139,7 +152,7 @@ export default function LiveAuctionRoom() {
   const readyTeamsArr = liveState.readyTeams ? liveState.readyTeams.split(',') : [];
   const hasReadied = (session?.user as any)?.id && readyTeamsArr.includes((session?.user as any)?.id);
 
-  const myTeam = teams.find(t => t.id === (session?.user as any)?.id);
+  const myTeam = Array.isArray(teams) ? teams.find((t) => t.id === (session?.user as any)?.id) : undefined;
   const canRTM = isAuctionActive && 
                  myTeam && 
                  !myTeam.rtmUsed && 

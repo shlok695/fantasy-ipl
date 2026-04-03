@@ -22,6 +22,66 @@ export default function Dashboard() {
     <div className="space-y-8 pb-2 sm:space-y-10">
       <HeroSection topTeams={derived.topTeams} />
 
+      <section className="dashboard-fade-in grid gap-4 md:grid-cols-2">
+        <div className="relative overflow-hidden rounded-[30px] border border-orange-500/35 bg-gradient-to-br from-orange-500/20 via-amber-600/10 to-orange-900/20 p-6 shadow-[0_24px_80px_rgba(234,88,12,0.12)]">
+          <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-orange-400/20 blur-2xl" />
+          <div className="relative">
+            <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-orange-200/90">Orange Cap</p>
+            <h2 className="mt-2 font-display text-2xl font-black uppercase text-white">Highest run scorer</h2>
+            <p className="mt-1 text-xs text-orange-100/70">Display only — not the season-end bonus award.</p>
+            {derived.orangeCapHolder ? (
+              <div className="mt-5 flex items-center gap-4">
+                <Image
+                  src={getPlayerImage(derived.orangeCapHolder.name, derived.orangeCapHolder.role || undefined)}
+                  alt={derived.orangeCapHolder.name}
+                  width={64}
+                  height={64}
+                  className="h-16 w-16 rounded-2xl border border-orange-400/30 bg-slate-950 object-cover"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-black text-white">{derived.orangeCapHolder.name}</p>
+                  <p className="truncate text-sm text-orange-100/90">
+                    IPL {derived.orangeCapHolder.iplTeam || "—"} · {derived.orangeCapHolder.user?.name || "—"}
+                  </p>
+                  <p className="mt-1 text-2xl font-black text-orange-200">{derived.orangeCapHolder.totalRuns} runs</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-5 text-sm text-orange-100/60">Waiting for batting stats from synced matches.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="relative overflow-hidden rounded-[30px] border border-violet-500/40 bg-gradient-to-br from-violet-600/20 via-fuchsia-900/15 to-purple-950/25 p-6 shadow-[0_24px_80px_rgba(139,92,246,0.15)]">
+          <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-violet-500/25 blur-3xl" />
+          <div className="relative">
+            <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-violet-200/90">Purple Cap</p>
+            <h2 className="mt-2 font-display text-2xl font-black uppercase text-white">Highest wicket taker</h2>
+            <p className="mt-1 text-xs text-violet-100/70">Display only — not the season-end bonus award.</p>
+            {derived.purpleCapHolder ? (
+              <div className="mt-5 flex items-center gap-4">
+                <Image
+                  src={getPlayerImage(derived.purpleCapHolder.name, derived.purpleCapHolder.role || undefined)}
+                  alt={derived.purpleCapHolder.name}
+                  width={64}
+                  height={64}
+                  className="h-16 w-16 rounded-2xl border border-violet-400/35 bg-slate-950 object-cover"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-black text-white">{derived.purpleCapHolder.name}</p>
+                  <p className="truncate text-sm text-violet-100/90">
+                    IPL {derived.purpleCapHolder.iplTeam || "—"} · {derived.purpleCapHolder.user?.name || "—"}
+                  </p>
+                  <p className="mt-1 text-2xl font-black text-violet-200">{derived.purpleCapHolder.totalWickets} wickets</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-5 text-sm text-violet-100/60">Waiting for bowling stats from synced matches.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className="dashboard-fade-in grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {derived.stats.map((stat) => (
           <StatsCard key={stat.label} {...stat} />
@@ -36,7 +96,16 @@ export default function Dashboard() {
           </div>
           <div className="grid gap-5 lg:grid-cols-3 lg:items-end">
             {derived.topTeams.map((summary) => (
-              <div key={summary.team.id} className={summary.rank === 1 ? "lg:order-2" : summary.rank === 2 ? "lg:order-1" : "lg:order-3"}>
+              <div
+                key={summary.team.id}
+                className={
+                  summary.rank === 1
+                    ? "lg:order-2 lg:z-10 lg:-translate-y-6 lg:scale-[1.04]"
+                    : summary.rank === 2
+                      ? "lg:order-1 lg:translate-y-3"
+                      : "lg:order-3 lg:translate-y-8"
+                }
+              >
                 <TeamCard
                   summary={summary}
                   isAdmin={false}

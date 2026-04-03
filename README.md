@@ -33,7 +33,9 @@ npm install
 DATABASE_URL="file:./dev.db"
 NEXTAUTH_SECRET="anything_you_like"
 NEXTAUTH_URL="http://localhost:3000"
-CRICKET_API_KEY="your_api_key_here" # Optional for live payload sync
+CRICKET_API_KEY="your_cricketdata_or_cricapi_key" # Preferred for live sync and scorecards
+RAPIDAPI_CRICBUZZ_KEY="your_rapidapi_key"
+RAPIDAPI_CRICBUZZ_HOST="cricbuzz-cricket.p.rapidapi.com"
 ```
 4. Push the schema to the database:
 ```bash
@@ -43,3 +45,13 @@ npx prisma db push
 ```bash
 npm run dev
 ```
+
+## Live Sync Notes
+
+The app prefers Cricket Data / CricAPI when `CRICKET_API_KEY` is configured, and falls back to Cricbuzz via RapidAPI when needed.
+
+1. Configure `CRICKET_API_KEY` with your Cricket Data / CricAPI key for primary scorecard and match detection.
+2. Configure `RAPIDAPI_CRICBUZZ_KEY` as the fallback provider.
+3. Keep `RAPIDAPI_CRICBUZZ_HOST="cricbuzz-cricket.p.rapidapi.com"`.
+4. Auto-sync waits until 10 overs are completed before syncing a detected live match.
+5. If live over data is unavailable, the manual fallback delay defaults to 60 minutes.
