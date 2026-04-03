@@ -2,11 +2,84 @@ import Link from "next/link";
 import { ChevronRight, Sparkles, Trophy } from "lucide-react";
 import type { TeamSummary } from "@/components/dashboard/types";
 
-const podiumClasses = [
-  "border-[#F5C451]/50 bg-[#F5C451]/14 text-[#F5C451]",
-  "border-slate-300/40 bg-slate-300/12 text-slate-200",
-  "border-amber-700/50 bg-amber-700/14 text-amber-400",
-];
+/** Renders 2nd (left), 1st (center, elevated), 3rd (right) — visual podium. */
+function FeaturedPodium({ topTeams }: { topTeams: TeamSummary[] }) {
+  if (topTeams.length === 0) {
+    return (
+      <div className="rounded-[24px] border border-dashed border-white/15 bg-slate-950/40 px-4 py-8 text-center text-sm text-slate-400">
+        Rankings will appear once teams have points on the board.
+      </div>
+    );
+  }
+
+  if (topTeams.length < 3) {
+    return (
+      <div className="grid gap-3">
+        {topTeams.map((item) => (
+          <PodiumMiniCard key={item.team.id} summary={item} emphasize={item.rank === 1} />
+        ))}
+      </div>
+    );
+  }
+
+  const second = topTeams[1];
+  const first = topTeams[0];
+  const third = topTeams[2];
+
+  return (
+    <div className="flex items-end justify-center gap-2 sm:gap-4">
+      <div className="w-[32%] max-w-[200px] flex-1 pb-6 sm:pb-8">
+        <PodiumMiniCard summary={second} emphasize={false} slot="second" />
+      </div>
+      <div className="w-[36%] max-w-[220px] flex-1 z-10 -translate-y-3 sm:-translate-y-5 scale-[1.03] sm:scale-105">
+        <PodiumMiniCard summary={first} emphasize slot="first" />
+      </div>
+      <div className="w-[32%] max-w-[200px] flex-1 pb-10 sm:pb-14">
+        <PodiumMiniCard summary={third} emphasize={false} slot="third" />
+      </div>
+    </div>
+  );
+}
+
+function podiumSlotClass(slot: "first" | "second" | "third", emphasize: boolean) {
+  if (emphasize) {
+    return "border-[#F5C451]/55 bg-[#F5C451]/16 text-[#F5C451] shadow-[0_20px_60px_rgba(245,196,81,0.12)]";
+  }
+  if (slot === "second") {
+    return "border-slate-300/40 bg-slate-300/12 text-slate-200";
+  }
+  return "border-amber-800/45 bg-amber-800/14 text-amber-400";
+}
+
+function PodiumMiniCard({
+  summary,
+  emphasize,
+  slot = "first",
+}: {
+  summary: TeamSummary;
+  emphasize?: boolean;
+  slot?: "first" | "second" | "third";
+}) {
+  const ring = emphasize ? "ring-2 ring-[#F5C451]/35" : "";
+  return (
+    <div
+      className={`rounded-[24px] border px-3 py-4 transition-all duration-300 hover:scale-[1.01] sm:px-4 sm:py-5 ${podiumSlotClass(
+        slot,
+        Boolean(emphasize)
+      )} ${ring}`}
+    >
+      <div className="flex flex-col gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.28em] opacity-85">Rank {summary.rank}</p>
+        <h3 className="truncate text-base font-black text-white sm:text-lg">{summary.team.name}</h3>
+        <p className="truncate text-[11px] text-slate-300">{summary.playerCount} players</p>
+        <div className="mt-1 border-t border-white/10 pt-2 text-right">
+          <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-400">Points</p>
+          <p className="text-xl font-black text-white sm:text-2xl">{Math.round(summary.points)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function HeroSection({ topTeams }: { topTeams: TeamSummary[] }) {
   return (
@@ -55,32 +128,14 @@ export function HeroSection({ topTeams }: { topTeams: TeamSummary[] }) {
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">Featured Podium</p>
                 <h2 className="mt-2 font-display text-2xl font-black uppercase text-white">Top 3 Teams</h2>
+                <p className="mt-1 text-[11px] text-slate-500">1st center & highest · 2nd left · 3rd right</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#F5C451]/30 bg-[#F5C451]/10 text-[#F5C451]">
                 <Trophy size={20} />
               </div>
             </div>
 
-            <div className="grid gap-3">
-              {topTeams.map((item, index) => (
-                <div
-                  key={item.team.id}
-                  className={`rounded-[24px] border px-4 py-4 transition-all duration-300 hover:scale-[1.01] ${podiumClasses[index] || "border-white/10 bg-white/6 text-white"}`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.3em] opacity-80">Rank {item.rank}</p>
-                      <h3 className="truncate text-lg font-black text-white">{item.team.name}</h3>
-                      <p className="truncate text-xs text-slate-300">{item.playerCount} players locked in</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-300">Points</p>
-                      <p className="text-2xl font-black text-white">{Math.round(item.points)}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <FeaturedPodium topTeams={topTeams} />
           </div>
         </div>
       </div>

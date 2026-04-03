@@ -1,4 +1,9 @@
-import { calculateDream11Points } from "./pointsEngineCore";
+import {
+  DREAM11_SCORE_VERSION,
+  calculateDream11Breakdown,
+  calculateDream11Points,
+  createPlayerPointsAudit,
+} from "./pointsEngineCore";
 
 export interface PlayerMatchStats {
   runs: number;
@@ -20,5 +25,9 @@ export interface PlayerMatchStats {
   inStartingXI?: boolean;
 }
 
-export { calculateDream11Points };
-
+export {
+  DREAM11_SCORE_VERSION,
+  calculateDream11Breakdown,
+  calculateDream11Points,
+  createPlayerPointsAudit,
+};

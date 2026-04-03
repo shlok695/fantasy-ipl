@@ -8,9 +8,11 @@ import {
 } from "lucide-react";
 import { formatMatchLabel } from "@/lib/matchLabels";
 import { getTopPlayers } from "@/lib/teamMetrics";
+import { getLatestAndPreviousTeamMatches } from "@/lib/teamHistory";
 import type {
   DashboardPlayer,
   DashboardTeam,
+  PlayerPointEntry,
   SpotlightItem,
   StatItem,
   TeamSummary,
@@ -32,6 +34,7 @@ export interface ActivityEntry {
   teamName?: string | null;
   matchId?: string | null;
   matchLabel: string;
+  matchMeta?: PlayerPointEntry["match"];
   points: number;
   createdAt?: string;
 }
@@ -82,6 +85,10 @@ export interface LeagueDerivedData {
   teamSummaries: TeamSummary[];
   topTeams: TeamSummary[];
   topPlayer: AggregatedPlayer | null;
+  /** Season aggregate — display only; not the end-of-league bonus awards */
+  orangeCapHolder: AggregatedPlayer | null;
+  /** Season aggregate — display only */
+  purpleCapHolder: AggregatedPlayer | null;
   playerLeaders: PlayerLeader[];
   spotlightItems: SpotlightItem[];
   latestActivity: ActivityEntry[];
@@ -100,6 +107,23 @@ export interface LeagueDerivedData {
 function toMatchNumber(matchId?: string | null) {
   const numeric = Number.parseInt(matchId || "", 10);
   return Number.isNaN(numeric) ? -1 : numeric;
+}
+
+function getWeekStartUtc(date: Date) {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay(); // 0 Sun..6 Sat
+  const diff = (day + 6) % 7; // days since Monday
+  d.setUTCDate(d.getUTCDate() - diff);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+function weekKeyUtc(date: Date) {
+  const start = getWeekStartUtc(date);
+  const yyyy = start.getUTCFullYear();
+  const mm = String(start.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(start.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function formatPoints(value: number) {
@@ -227,7 +251,13 @@ function buildTeamComparisons(topTeams: TeamSummary[]) {
   return comparisons;
 }
 
-export function deriveLeagueData(teams: DashboardTeam[]): LeagueDerivedData {
+export function deriveLeagueData(
+  teams: DashboardTeam[],
+  overrides?: {
+    orangeCapHolder?: AggregatedPlayer | null;
+    purpleCapHolder?: AggregatedPlayer | null;
+  }
+): LeagueDerivedData {
   const allPlayers = teams.flatMap((team) => team.players || []);
   const aggregatedPlayers = allPlayers.map(aggregatePlayer);
   const activePlayers = aggregatedPlayers.filter((player) => player.totalPoints > 0 || player.totalRuns > 0 || player.totalWickets > 0);
@@ -237,7 +267,8 @@ export function deriveLeagueData(teams: DashboardTeam[]): LeagueDerivedData {
       playerName: player.name,
       teamName: player.user?.name,
       matchId: entry.matchId,
-      matchLabel: formatMatchLabel(entry.matchId, "standard"),
+      matchLabel: formatMatchLabel(entry.matchId, "standard", entry.match || null),
+      matchMeta: entry.match || null,
       points: entry.points || 0,
       createdAt: entry.createdAt,
     }))
@@ -245,11 +276,17 @@ export function deriveLeagueData(teams: DashboardTeam[]): LeagueDerivedData {
 
   const latestMatchNumber = Math.max(...pointEntries.map((entry) => toMatchNumber(entry.matchId)), -1);
   const latestMatchId = latestMatchNumber >= 0 ? String(latestMatchNumber) : null;
+  const matchMetaById = new Map(
+    pointEntries
+      .filter((entry) => entry.matchId)
+      .map((entry) => [String(entry.matchId), entry.matchMeta || null])
+  );
   const previousRanks = buildMovementMap(teams, latestMatchNumber);
 
   const teamSummaries: TeamSummary[] = teams.map((team, index) => {
     const rank = index + 1;
     const previousRank = previousRanks.get(team.id) || rank;
+    const { latestMatch, previousMatch } = getLatestAndPreviousTeamMatches(team);
 
     return {
       team,
@@ -260,7 +297,10 @@ export function deriveLeagueData(teams: DashboardTeam[]): LeagueDerivedData {
       playerCount: team.players?.length || 0,
       budget: team.budget || 0,
       topPlayers: getTopPlayers(team.players || [], 11) as DashboardPlayer[],
-      recentTrend: getRecentTrend(team, latestMatchNumber),
+      recentTrend: latestMatch?.totalPoints || getRecentTrend(team, latestMatchNumber),
+      previousTrend: previousMatch?.totalPoints || 0,
+      latestMatchLabel: latestMatch?.compactMatchLabel || null,
+      previousMatchLabel: previousMatch?.compactMatchLabel || null,
     };
   });
 
@@ -272,21 +312,21 @@ export function deriveLeagueData(teams: DashboardTeam[]): LeagueDerivedData {
   );
 
   const topPlayer = findLeader(activePlayers, (player) => player.totalPoints);
-  const topRunScorer = findLeader(aggregatedPlayers, (player) => player.totalRuns);
-  const topWicketTaker = findLeader(aggregatedPlayers, (player) => player.totalWickets);
+  const topRunScorer = overrides?.orangeCapHolder ?? findLeader(aggregatedPlayers, (player) => player.totalRuns);
+  const topWicketTaker = overrides?.purpleCapHolder ?? findLeader(aggregatedPlayers, (player) => player.totalWickets);
   const mostHundreds = findLeader(aggregatedPlayers, (player) => player.innings100s);
   const mostFifties = findLeader(aggregatedPlayers, (player) => player.innings50s);
 
   const playerLeaders: PlayerLeader[] = [
     {
-      label: "Highest Run Scorer",
+      label: "Orange Cap Holder",
       statLabel: "Runs",
       statValue: `${topRunScorer?.totalRuns || 0}`,
       accentClass: "from-orange-500/25 to-amber-400/15",
       player: topRunScorer,
     },
     {
-      label: "Most Wickets Taken",
+      label: "Purple Cap Holder",
       statLabel: "Wickets",
       statValue: `${topWicketTaker?.totalWickets || 0}`,
       accentClass: "from-violet-500/25 to-fuchsia-500/15",
@@ -351,69 +391,109 @@ export function deriveLeagueData(teams: DashboardTeam[]): LeagueDerivedData {
     },
   ];
 
-  const weeklyAwards = Array.from(uniqueMatches)
-    .sort((a, b) => toMatchNumber(b) - toMatchNumber(a))
-    .slice(0, 4)
-    .flatMap((matchId) => {
-      const matchLabel = formatMatchLabel(matchId, "standard");
-      const compactMatchLabel = formatMatchLabel(matchId, "compact");
-      const inMatch = aggregatedPlayers
-        .map((player) => {
-          const match = (player.points || []).find((entry) => entry.matchId === matchId);
-          return match
+  const matchTimestamps = new Map<string, number>();
+  for (const entry of pointEntries) {
+    const matchId = String(entry.matchId || "").trim();
+    if (!matchId) continue;
+    const startedAt = entry.matchMeta?.startedAt ? new Date(String(entry.matchMeta.startedAt)).getTime() : Number.NaN;
+    const createdAt = entry.createdAt ? new Date(entry.createdAt).getTime() : Number.NaN;
+    const ts = Number.isFinite(startedAt) ? startedAt : createdAt;
+    if (!Number.isFinite(ts)) continue;
+    const prev = matchTimestamps.get(matchId);
+    if (!prev || ts > prev) {
+      matchTimestamps.set(matchId, ts);
+    }
+  }
+
+  let latestWeek: string | null = null;
+  let latestWeekTs = -1;
+  for (const [matchId, ts] of matchTimestamps.entries()) {
+    const meta = matchMetaById.get(matchId) || null;
+    const status = String(meta?.status || "");
+    if (status && !/\bwon\b/i.test(status)) {
+      continue;
+    }
+    const key = weekKeyUtc(new Date(ts));
+    if (ts > latestWeekTs) {
+      latestWeekTs = ts;
+      latestWeek = key;
+    }
+  }
+
+  const weeklyAwards = latestWeek
+    ? (() => {
+        const weekId = `week:${latestWeek}`;
+        const matchesInWeek = [...matchTimestamps.entries()]
+          .filter(([matchId, ts]) => {
+            const meta = matchMetaById.get(matchId) || null;
+            const status = String(meta?.status || "");
+            if (status && !/\bwon\b/i.test(status)) {
+              return false;
+            }
+            return weekKeyUtc(new Date(ts)) === latestWeek;
+          })
+          .map(([matchId]) => matchId);
+
+        const matchLabel = `Week of ${latestWeek}`;
+        const compactMatchLabel = matchLabel;
+
+        const totals = aggregatedPlayers
+          .map((player) => {
+            const entries = (player.points || []).filter((entry) => matchesInWeek.includes(String(entry.matchId || "")));
+            if (entries.length === 0) return null;
+            return {
+              player,
+              points: entries.reduce((sum, entry) => sum + (entry.points || 0), 0),
+              runs: entries.reduce((sum, entry) => sum + (entry.runs || 0), 0),
+              wickets: entries.reduce((sum, entry) => sum + (entry.wickets || 0), 0),
+            };
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+        const topPoints = [...totals].sort((a, b) => b.points - a.points)[0];
+        const topRuns = [...totals].sort((a, b) => b.runs - a.runs)[0];
+        const topWickets = [...totals].sort((a, b) => b.wickets - a.wickets)[0];
+
+        return [
+          topPoints
             ? {
-                player,
-                points: match.points || 0,
-                runs: match.runs || 0,
-                wickets: match.wickets || 0,
+                matchId: weekId,
+                matchLabel,
+                compactMatchLabel,
+                title: "Weekly MVP",
+                winner: topPoints.player.name,
+                teamName: topPoints.player.user?.name,
+                value: formatPoints(topPoints.points),
+                description: `Best fantasy haul across ${matchesInWeek.length} match${matchesInWeek.length === 1 ? "" : "es"}.`,
               }
-            : null;
-        })
-        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-
-      const topPoints = [...inMatch].sort((a, b) => b.points - a.points)[0];
-      const topRuns = [...inMatch].sort((a, b) => b.runs - a.runs)[0];
-      const topWickets = [...inMatch].sort((a, b) => b.wickets - a.wickets)[0];
-
-      return [
-        topPoints
-          ? {
-              matchId,
-              matchLabel,
-              compactMatchLabel,
-              title: "Weekly MVP",
-              winner: topPoints.player.name,
-              teamName: topPoints.player.user?.name,
-              value: formatPoints(topPoints.points),
-              description: `Best fantasy haul in ${compactMatchLabel}.`,
-            }
-          : null,
-        topRuns && topRuns.runs > 0
-          ? {
-              matchId,
-              matchLabel,
-              compactMatchLabel,
-              title: "Run Machine",
-              winner: topRuns.player.name,
-              teamName: topRuns.player.user?.name,
-              value: `${topRuns.runs} runs`,
-              description: `Top batting output from ${matchLabel}.`,
-            }
-          : null,
-        topWickets && topWickets.wickets > 0
-          ? {
-              matchId,
-              matchLabel,
-              compactMatchLabel,
-              title: "Strike Bowler",
-              winner: topWickets.player.name,
-              teamName: topWickets.player.user?.name,
-              value: `${topWickets.wickets} wickets`,
-              description: `Best bowling spell from ${matchLabel}.`,
-            }
-          : null,
-      ].filter((entry): entry is WeeklyAward => Boolean(entry));
-    });
+            : null,
+          topRuns && topRuns.runs > 0
+            ? {
+                matchId: weekId,
+                matchLabel,
+                compactMatchLabel,
+                title: "Run Machine",
+                winner: topRuns.player.name,
+                teamName: topRuns.player.user?.name,
+                value: `${topRuns.runs} runs`,
+                description: `Most runs across ${matchesInWeek.length} match${matchesInWeek.length === 1 ? "" : "es"}.`,
+              }
+            : null,
+          topWickets && topWickets.wickets > 0
+            ? {
+                matchId: weekId,
+                matchLabel,
+                compactMatchLabel,
+                title: "Strike Bowler",
+                winner: topWickets.player.name,
+                teamName: topWickets.player.user?.name,
+                value: `${topWickets.wickets} wickets`,
+                description: `Most wickets across ${matchesInWeek.length} match${matchesInWeek.length === 1 ? "" : "es"}.`,
+              }
+            : null,
+        ].filter((entry): entry is WeeklyAward => Boolean(entry));
+      })()
+    : [];
 
   const milestones: Milestone[] = [
     topTeams[0]
@@ -470,6 +550,8 @@ export function deriveLeagueData(teams: DashboardTeam[]): LeagueDerivedData {
     teamSummaries,
     topTeams,
     topPlayer,
+    orangeCapHolder: topRunScorer,
+    purpleCapHolder: topWicketTaker,
     playerLeaders,
     spotlightItems,
     latestActivity,

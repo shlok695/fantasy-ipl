@@ -9,6 +9,8 @@ import { Providers } from "@/components/Providers";
 import { getLiveRoomVisible } from "@/lib/liveRoomVisibility";
 import { APP_INTERNAL_VERSION } from "@/lib/appConfig";
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Fantasy IPL Auction & League',
   description: 'Manage your IPL Auction and squads with family and friends.',

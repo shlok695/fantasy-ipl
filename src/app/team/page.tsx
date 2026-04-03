@@ -5,7 +5,11 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Users, Trophy, Star, Activity, Crown, ShieldAlert } from "lucide-react";
 import { basePath } from "@/lib/basePath";
+import { MatchBreakdownPanel } from "@/components/team/MatchBreakdownPanel";
+import { ExpandableSquadPlayerRow } from "@/components/team/ExpandableSquadPlayerRow";
 import { getCountryFlag, getPlayerImage } from "@/lib/playerIndex";
+import { TeamViewTabs, type TeamViewTabId } from "@/components/team/TeamViewTabs";
+import { formatMatchDateLabel, getLatestAndPreviousTeamMatches } from "@/lib/teamHistory";
 import { getPlayerTotalPoints, getTopPlayers, sortPlayersByPoints } from "@/lib/teamMetrics";
 
 export default function MyTeamPage() {
@@ -16,6 +20,7 @@ export default function MyTeamPage() {
   const [viceCaptainId, setViceCaptainId] = useState("");
   const [leadershipLoading, setLeadershipLoading] = useState(false);
   const [leadershipMessage, setLeadershipMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [teamTab, setTeamTab] = useState<TeamViewTabId>("overview");
 
   useEffect(() => {
     if (status === "loading") {
@@ -30,8 +35,13 @@ export default function MyTeamPage() {
     const fetchTeam = async () => {
       try {
         const res = await fetch(`${basePath}/api/teams`, { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error(`Team request failed with ${res.status}`);
+        }
+
         const data = await res.json();
-        const myTeam = data.find((entry: any) => entry.id === (session.user as any).id) || null;
+        const teams = Array.isArray(data) ? data : [];
+        const myTeam = teams.find((entry: any) => entry.id === (session.user as any).id) || null;
         setTeam(myTeam);
         if (myTeam) {
           setCaptainId((current) => current || myTeam.captainId || "");
@@ -83,6 +93,9 @@ export default function MyTeamPage() {
   const bench = sortedPlayers.slice(11);
   const totalSquadPoints = sortedPlayers.reduce((sum, player) => sum + getPlayerTotalPoints(player), 0);
   const leadershipLocked = Boolean(team.captainId || team.viceCaptainId);
+  const { latestMatch, previousMatch, matches } = getLatestAndPreviousTeamMatches(team);
+  const captainPlayer = sortedPlayers.find((p: any) => p.id === team.captainId);
+  const viceCaptainPlayer = sortedPlayers.find((p: any) => p.id === team.viceCaptainId);
 
   const handleLeadershipSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +118,8 @@ export default function MyTeamPage() {
       await fetch(`${basePath}/api/teams`, { cache: "no-store" })
         .then((response) => response.json())
         .then((data) => {
-          const myTeam = data.find((entry: any) => entry.id === (session.user as any).id) || null;
+          const teams = Array.isArray(data) ? data : [];
+          const myTeam = teams.find((entry: any) => entry.id === (session.user as any).id) || null;
           setTeam(myTeam);
         });
     } catch (error: any) {
@@ -139,7 +153,11 @@ export default function MyTeamPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <TeamViewTabs active={teamTab} onChange={setTeamTab} variant="franchise" />
+
+      {teamTab === "overview" && (
+        <>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
         <div className="glass-card p-5">
           <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Squad Size</p>
           <p className="text-3xl font-black text-white">{sortedPlayers.length}</p>
@@ -154,6 +172,22 @@ export default function MyTeamPage() {
           <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Squad Total</p>
           <p className="text-3xl font-black text-amber-300">{totalSquadPoints}</p>
           <p className="text-xs text-gray-500 mt-2">All players combined</p>
+        </div>
+        <div className="glass-card p-5">
+          <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Latest Match</p>
+          <p className="text-3xl font-black text-cyan-300">{latestMatch ? Math.round(latestMatch.totalPoints) : 0}</p>
+          <p className="text-xs text-gray-500 mt-2">{latestMatch?.compactMatchLabel || "No match points yet"}</p>
+          {latestMatch && formatMatchDateLabel(latestMatch.startedAt) && (
+            <p className="text-[11px] text-gray-500 mt-1">{formatMatchDateLabel(latestMatch.startedAt)}</p>
+          )}
+        </div>
+        <div className="glass-card p-5">
+          <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Previous Match</p>
+          <p className="text-3xl font-black text-violet-300">{previousMatch ? Math.round(previousMatch.totalPoints) : 0}</p>
+          <p className="text-xs text-gray-500 mt-2">{previousMatch?.compactMatchLabel || "Waiting for next score"}</p>
+          {previousMatch && formatMatchDateLabel(previousMatch.startedAt) && (
+            <p className="text-[11px] text-gray-500 mt-1">{formatMatchDateLabel(previousMatch.startedAt)}</p>
+          )}
         </div>
         <div className="glass-card p-5">
           <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Bench</p>
@@ -196,7 +230,7 @@ export default function MyTeamPage() {
                 <option value="">Select captain</option>
                 {sortedPlayers.map((player: any) => (
                   <option key={player.id} value={player.id}>
-                    {player.name} ({getPlayerTotalPoints(player)} pts)
+                    {player.name} · IPL {player.iplTeam || "—"} · {getPlayerTotalPoints(player)} pts
                   </option>
                 ))}
               </select>
@@ -212,7 +246,7 @@ export default function MyTeamPage() {
                 <option value="">Select vice-captain</option>
                 {sortedPlayers.map((player: any) => (
                   <option key={player.id} value={player.id}>
-                    {player.name} ({getPlayerTotalPoints(player)} pts)
+                    {player.name} · IPL {player.iplTeam || "—"} · {getPlayerTotalPoints(player)} pts
                   </option>
                 ))}
               </select>
@@ -230,10 +264,16 @@ export default function MyTeamPage() {
             <div className="bg-black/20 border border-white/5 rounded-2xl p-4">
               <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">Captain</p>
               <p className="text-xl font-black text-amber-300">{team.captain?.name || "Not selected"}</p>
+              {captainPlayer?.iplTeam && (
+                <p className="text-xs text-indigo-300/90 font-semibold mt-1">IPL {captainPlayer.iplTeam}</p>
+              )}
             </div>
             <div className="bg-black/20 border border-white/5 rounded-2xl p-4">
               <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">Vice-Captain</p>
               <p className="text-xl font-black text-indigo-300">{team.viceCaptain?.name || "Not selected"}</p>
+              {viceCaptainPlayer?.iplTeam && (
+                <p className="text-xs text-indigo-300/90 font-semibold mt-1">IPL {viceCaptainPlayer.iplTeam}</p>
+              )}
             </div>
             <div className="bg-black/20 border border-white/5 rounded-2xl p-4 text-sm text-gray-300">
               <div className="flex items-start gap-3">
@@ -259,32 +299,26 @@ export default function MyTeamPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {top11.map((player: any, index: number) => {
-            const totalPoints = getPlayerTotalPoints(player);
-            return (
-              <div key={player.id} className="bg-black/25 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-black shrink-0">
-                  {index + 1}
-                </div>
-                <img src={getPlayerImage(player.name, player.role)} alt={player.name} className="w-14 h-14 rounded-2xl object-cover border border-white/10 bg-black" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-bold truncate">{player.name}</p>
-                    {team.captainId === player.id && <span className="text-[10px] font-black uppercase tracking-widest text-amber-300">C</span>}
-                    {team.viceCaptainId === player.id && <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">VC</span>}
-                    {getCountryFlag(player.country) && (
-                      <img src={getCountryFlag(player.country)!} alt={player.country || "India"} className="w-4 h-3 rounded object-cover shadow" />
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-400 truncate">{player.role || "Player"}</p>
-                  <div className="flex items-center justify-between mt-2 text-xs">
-                    <span className="text-emerald-400 font-bold">₹{player.auctionPrice?.toFixed(1) || "0.0"} Cr</span>
-                    <span className="text-white font-bold">{totalPoints} pts</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {top11.map((player: any, index: number) => (
+            <ExpandableSquadPlayerRow
+              key={player.id}
+              player={player}
+              rank={index + 1}
+              isStarter
+              captainId={team.captainId}
+              viceCaptainId={team.viceCaptainId}
+              variant="franchise"
+              countryFlag={
+                getCountryFlag(player.country) ? (
+                  <img
+                    src={getCountryFlag(player.country)!}
+                    alt={player.country || "India"}
+                    className="w-4 h-3 rounded object-cover shadow shrink-0"
+                  />
+                ) : undefined
+              }
+            />
+          ))}
         </div>
       </div>
 
@@ -294,45 +328,26 @@ export default function MyTeamPage() {
             <Users className="text-indigo-400" /> Full Squad
           </h2>
           <div className="space-y-3">
-            {sortedPlayers.map((player: any, index: number) => {
-              const totalPoints = getPlayerTotalPoints(player);
-              const isStarter = index < 11;
-              return (
-                <div key={player.id} className="bg-black/20 border border-white/5 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0 ${isStarter ? "bg-indigo-500/15 border border-indigo-500/30 text-indigo-300" : "bg-white/5 border border-white/10 text-gray-400"}`}>
-                      {index + 1}
-                    </div>
-                    <img src={getPlayerImage(player.name, player.role)} alt={player.name} className="w-12 h-12 rounded-xl object-cover border border-white/10 bg-black shrink-0" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold truncate">{player.name}</p>
-                        {team.captainId === player.id && <span className="text-[10px] font-black uppercase tracking-widest text-amber-300">C</span>}
-                        {team.viceCaptainId === player.id && <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">VC</span>}
-                        {getCountryFlag(player.country) && (
-                          <img src={getCountryFlag(player.country)!} alt={player.country || "India"} className="w-4 h-3 rounded object-cover shadow shrink-0" />
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-400 truncate">{player.role || "Player"} • {player.type || "Uncategorized"}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-8 text-sm">
-                    <div className="text-left sm:text-right">
-                      <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Price</p>
-                      <p className="text-emerald-400 font-bold">₹{player.auctionPrice?.toFixed(1) || "0.0"} Cr</p>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Points</p>
-                      <p className="text-white font-bold">{totalPoints}</p>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Status</p>
-                      <p className={`font-bold ${isStarter ? "text-indigo-300" : "text-gray-400"}`}>{isStarter ? "Top 11" : "Bench"}</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {sortedPlayers.map((player: any, index: number) => (
+              <ExpandableSquadPlayerRow
+                key={player.id}
+                player={player}
+                rank={index + 1}
+                isStarter={index < 11}
+                captainId={team.captainId}
+                viceCaptainId={team.viceCaptainId}
+                variant="franchise"
+                countryFlag={
+                  getCountryFlag(player.country) ? (
+                    <img
+                      src={getCountryFlag(player.country)!}
+                      alt={player.country || "India"}
+                      className="w-4 h-3 rounded object-cover shadow shrink-0"
+                    />
+                  ) : undefined
+                }
+              />
+            ))}
           </div>
         </div>
 
@@ -366,6 +381,17 @@ export default function MyTeamPage() {
           </div>
         </div>
       </div>
+        </>
+      )}
+
+      {teamTab === "matches" && (
+        <MatchBreakdownPanel
+          title="Match History"
+          subtitle="Newest first. Dates use the official match start when synced. Expand players on Overview for a personal timeline."
+          matches={matches}
+          emptyMessage="Your match-by-match squad totals will appear here once points are synced."
+        />
+      )}
     </div>
   );
 }

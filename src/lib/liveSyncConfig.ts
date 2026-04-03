@@ -21,8 +21,8 @@ type LiveSyncConfigRow = {
 const DEFAULT_CONFIG: LiveSyncConfig = {
   matchId: "",
   matchStartAt: "",
-  afterOverMinutes: 6,
-  intervalMs: 60_000,
+  afterOverMinutes: 60,
+  intervalMs: 30 * 60_000,
   enabled: false,
 };
 

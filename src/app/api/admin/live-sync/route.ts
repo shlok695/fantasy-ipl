@@ -5,7 +5,19 @@ import { getLiveSyncConfig, saveLiveSyncConfig } from "@/lib/liveSyncConfig";
 import { recordAdminAudit } from "@/lib/adminAudit";
 import { detectCurrentIplMatch, getMatchMaxOvers } from "@/lib/cricketApi";
 
-export async function GET() {
+function sanitizeDebugPayload(value: unknown) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return { error: "Debug payload could not be serialized" };
+  }
+}
+
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
 
   if (session?.user?.name !== "admin") {
@@ -13,8 +25,10 @@ export async function GET() {
   }
 
   try {
+    const { searchParams } = new URL(request.url);
+    const forceRefresh = searchParams.get("refresh") === "1";
     const config = await getLiveSyncConfig();
-    const detectedMatch = await detectCurrentIplMatch();
+    const detectedMatch = await detectCurrentIplMatch({ forceRefresh });
     return NextResponse.json({
       config,
       detectedMatch: detectedMatch
@@ -24,6 +38,12 @@ export async function GET() {
             status: detectedMatch.status,
             overs: getMatchMaxOvers(detectedMatch),
             dateTimeGMT: detectedMatch.dateTimeGMT,
+            provider: detectedMatch.provider || null,
+            matchType: detectedMatch.matchType || null,
+            seriesId: detectedMatch.series_id || null,
+            seriesName: detectedMatch.series_name || null,
+            score: detectedMatch.score || [],
+            debugPayload: sanitizeDebugPayload(detectedMatch.debugRaw),
           }
         : null,
     });
@@ -48,12 +68,8 @@ export async function POST(request: Request) {
     const afterOverMinutes = Number.parseInt(String(body.afterOverMinutes || ""), 10);
     const intervalMs = Number.parseInt(String(body.intervalMs || ""), 10);
 
-    if (enabled && !matchId) {
-      return NextResponse.json({ error: "Match ID is required when auto-sync is enabled" }, { status: 400 });
-    }
-
-    if (enabled && !matchStartAt) {
-      return NextResponse.json({ error: "Match start time is required when auto-sync is enabled" }, { status: 400 });
+    if (enabled && matchId && !matchStartAt) {
+      return NextResponse.json({ error: "Match start time is required when a manual match ID is configured" }, { status: 400 });
     }
 
     if (matchStartAt && Number.isNaN(new Date(matchStartAt).getTime())) {
@@ -64,8 +80,8 @@ export async function POST(request: Request) {
       matchId,
       matchStartAt,
       enabled,
-      afterOverMinutes: Number.isFinite(afterOverMinutes) && afterOverMinutes >= 0 ? afterOverMinutes : 6,
-      intervalMs: Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 60_000,
+      afterOverMinutes: Number.isFinite(afterOverMinutes) && afterOverMinutes >= 0 ? afterOverMinutes : 60,
+      intervalMs: Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 1_800_000,
     });
 
     await recordAdminAudit(

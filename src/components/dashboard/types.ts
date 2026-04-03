@@ -8,7 +8,26 @@ export interface PlayerPointEntry {
   ballsFaced?: number;
   wickets?: number;
   dotBalls?: number;
+  breakdownJson?: string | null;
+  statsJson?: string | null;
+  scoreVersion?: string | null;
+  calculationHash?: string | null;
+  source?: string | null;
   createdAt?: string;
+  updatedAt?: string;
+  match?: {
+    id?: string;
+    displayId?: string | null;
+    shortTitle?: string | null;
+    title?: string | null;
+    season?: string | null;
+    status?: string | null;
+    team1Code?: string | null;
+    team2Code?: string | null;
+    team1Name?: string | null;
+    team2Name?: string | null;
+    startedAt?: string | null;
+  } | null;
 }
 
 export interface DashboardPlayer {
@@ -53,6 +72,9 @@ export interface TeamSummary {
   budget: number;
   topPlayers: DashboardPlayer[];
   recentTrend: number;
+  latestMatchLabel?: string | null;
+  previousMatchLabel?: string | null;
+  previousTrend?: number;
 }
 
 export interface StatItem {

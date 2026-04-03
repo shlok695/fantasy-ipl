@@ -31,17 +31,17 @@ export function TeamCard({
   onUpdateBudget,
   variant = "leaderboard",
 }: TeamCardProps) {
-  const { team, rank, points, playerCount, budget, topPlayers, recentTrend } = summary;
+  const { team, rank, points, playerCount, budget, topPlayers, recentTrend, previousTrend = 0, latestMatchLabel, previousMatchLabel } = summary;
   const featured = variant === "podium";
   const captainName = team.captain?.name || "Not selected";
   const viceCaptainName = team.viceCaptain?.name || "Not selected";
+  const latestLabel = latestMatchLabel || "latest match";
+  const previousLabel = previousMatchLabel || "previous match";
 
   if (featured) {
     return (
       <article
-        className={`group glass-panel dashboard-fade-in relative overflow-hidden rounded-[30px] border p-0 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_28px_90px_rgba(59,130,246,0.15)] ${
-          rank === 1 ? "xl:-translate-y-4" : ""
-        }`}
+        className="group glass-panel dashboard-fade-in relative overflow-hidden rounded-[30px] border p-0 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_28px_90px_rgba(59,130,246,0.15)]"
       >
         <div
           className={`absolute inset-0 opacity-90 ${
@@ -99,7 +99,11 @@ export function TeamCard({
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-emerald-200">
               <ArrowUpRight size={13} />
-              +{recentTrend} latest match
+              +{recentTrend} {latestLabel}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-cyan-200">
+              <ArrowUpRight size={13} />
+              +{previousTrend} {previousLabel}
             </span>
           </div>
 
@@ -190,7 +194,11 @@ export function TeamCard({
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-emerald-200">
                   <ArrowUpRight size={13} />
-                  +{recentTrend} latest match
+                  +{recentTrend} {latestLabel}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-cyan-200">
+                  <ArrowUpRight size={13} />
+                  +{previousTrend} {previousLabel}
                 </span>
               </div>
             </div>
