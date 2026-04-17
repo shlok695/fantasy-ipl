@@ -12,6 +12,8 @@ const TEAM_CODE_ALIASES = {
   "sunrisers hyderabad": "SRH",
 };
 
+const IPL_TEAM_CODES = new Set(Object.values(TEAM_CODE_ALIASES));
+
 function normalizeText(value) {
   return String(value || "").trim().replace(/\s+/g, " ");
 }
@@ -28,7 +30,14 @@ function normalizeTeamCode(value) {
   if (alias) return alias;
 
   if (/^[A-Z]{2,5}$/i.test(text)) {
-    return text.toUpperCase();
+    const compact = text.toUpperCase().replace(/\s+/g, "");
+    if (compact.endsWith("W")) {
+      const stripped = compact.slice(0, -1);
+      if (IPL_TEAM_CODES.has(stripped)) {
+        return stripped;
+      }
+    }
+    return compact;
   }
 
   return text
@@ -119,10 +128,31 @@ function inferTeamsFromScorecardPayload(data) {
 
 function createDisplayId(team1Code, team2Code, fallbackMatchId) {
   if (team1Code && team2Code) {
-    return `${team1Code}vs${team2Code}`;
+    return `${normalizeTeamCode(team1Code)}vs${normalizeTeamCode(team2Code)}`;
   }
 
   return normalizeText(fallbackMatchId) || null;
+}
+
+function parseStartedAt(value) {
+  const text = normalizeText(value);
+  if (!text) {
+    return null;
+  }
+
+  if (/^\d+$/.test(text)) {
+    const numericValue = Number.parseInt(text, 10);
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      return null;
+    }
+
+    const timestamp = text.length >= 13 ? numericValue : numericValue * 1000;
+    const parsed = new Date(timestamp);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 function createMatchMetaRecord(matchId, options = {}) {
@@ -159,7 +189,36 @@ function createMatchMetaFromRapidScorecard(matchId, data, source = "rapidapi") {
   return createMatchMetaRecord(matchId, {
     team1Name: teams[0] || null,
     team2Name: teams[1] || null,
-    status: data?.status || null,
+    team1Code:
+      data?.matchHeader?.team1?.shortName ||
+      data?.matchHeader?.team1?.teamSName ||
+      data?.matchInfo?.team1?.shortName ||
+      null,
+    team2Code:
+      data?.matchHeader?.team2?.shortName ||
+      data?.matchHeader?.team2?.teamSName ||
+      data?.matchInfo?.team2?.shortName ||
+      null,
+    title:
+      normalizeText(data?.matchHeader?.matchDescription) ||
+      normalizeText(data?.matchHeader?.title) ||
+      null,
+    season:
+      normalizeText(data?.matchHeader?.seriesName) ||
+      normalizeText(data?.matchInfo?.seriesName) ||
+      null,
+    status:
+      data?.matchHeader?.status ||
+      data?.matchInfo?.status ||
+      data?.status ||
+      null,
+    startedAt: parseStartedAt(
+      data?.matchHeader?.startTime ||
+      data?.matchHeader?.startDate ||
+      data?.matchInfo?.startDate ||
+      data?.matchInfo?.startTime ||
+      null
+    ),
     source,
   });
 }

@@ -1,7 +1,11 @@
 "use client";
 
 import { Activity, FileText } from "lucide-react";
-import { formatMatchDateLabel, type TeamMatchBreakdown } from "@/lib/teamHistory";
+import {
+  getTeamMatchDateLabel,
+  type TeamMatchBreakdown,
+} from "@/lib/teamHistory";
+import { PointsBreakdownTable } from "@/components/team/PointsBreakdownTable";
 import { withBasePath } from "@/lib/basePath";
 
 export function MatchBreakdownPanel({
@@ -34,15 +38,18 @@ export function MatchBreakdownPanel({
         </div>
       ) : (
         <div className="space-y-4">
-          {matches.map((match) => (
+          {matches.map((match) => {
+            const matchDateLabel = getTeamMatchDateLabel(match);
+
+            return (
             <article key={match.matchId} className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-500">{match.compactMatchLabel}</p>
                   <p className="mt-1 text-lg font-black text-white">{match.matchLabel}</p>
-                  {formatMatchDateLabel(match.startedAt) && (
+                  {matchDateLabel && (
                     <p className="mt-1 text-xs font-semibold text-cyan-200/80">
-                      {formatMatchDateLabel(match.startedAt)}
+                      {matchDateLabel}
                     </p>
                   )}
                   {showAuditLink && (
@@ -58,31 +65,64 @@ export function MatchBreakdownPanel({
                   )}
                 </div>
                 <div className="text-left sm:text-right shrink-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-gray-500">Team Match Points</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-gray-500">Player Match Points</p>
                   <p className="text-2xl font-black text-cyan-200">{Math.round(match.totalPoints)}</p>
+                  {match.bonusPoints > 0 && (
+                    <p className="mt-1 text-[11px] font-semibold text-amber-300/90">
+                      +{Math.round(match.bonusPoints)} bonus shown below
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="mt-4 space-y-2">
+                {match.bonuses.map((bonusRow) => (
+                  <div
+                    key={`${match.matchId}-${bonusRow.kind}-${bonusRow.teamCode}`}
+                    className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3"
+                  >
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-amber-100">{bonusRow.label}</p>
+                        <p className="truncate text-xs text-amber-100/70">
+                          {bonusRow.description}
+                        </p>
+                      </div>
+                      <p className="text-lg font-black text-amber-300 tabular-nums sm:text-right shrink-0">
+                        {Math.round(bonusRow.points)} pts
+                      </p>
+                    </div>
+                  </div>
+                ))}
                 {match.players.map((playerRow) => (
                   <div
                     key={`${match.matchId}-${playerRow.playerId}`}
-                    className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3"
+                    className="rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate font-bold text-white">{playerRow.playerName}</p>
-                      <p className="truncate text-xs text-gray-400">
-                        {playerRow.role || "Player"} • IPL {playerRow.iplTeam?.trim() || "—"}
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-white">{playerRow.playerName}</p>
+                        <p className="truncate text-xs text-gray-400">
+                          {playerRow.role || "Player"} • IPL {playerRow.iplTeam?.trim() || "—"}
+                        </p>
+                      </div>
+                      <p className="text-lg font-black text-emerald-300 tabular-nums sm:text-right shrink-0">
+                        {Math.round(playerRow.points)} pts
                       </p>
                     </div>
-                    <p className="text-lg font-black text-emerald-300 tabular-nums sm:text-right shrink-0">
-                      {Math.round(playerRow.points)} pts
-                    </p>
+                    <details className="mt-3 rounded-lg border border-white/8 bg-black/20">
+                      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-bold uppercase tracking-[0.22em] text-cyan-300/90">
+                        View calculation
+                      </summary>
+                      <div className="px-3 pb-3">
+                        <PointsBreakdownTable breakdownJson={playerRow.entry.breakdownJson} />
+                      </div>
+                    </details>
                   </div>
                 ))}
               </div>
             </article>
-          ))}
+          )})}
         </div>
       )}
     </section>

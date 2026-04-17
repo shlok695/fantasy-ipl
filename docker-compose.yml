@@ -1,0 +1,20 @@
+services:
+  fantasy-ipl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fantasy-ipl:latest
+    container_name: fantasy-ipl
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXTAUTH_URL: http://localhost:3000/ipl
+      NEXT_PUBLIC_BASE_PATH: /ipl
+    volumes:
+      - ./prisma:/app/prisma
+    restart: unless-stopped

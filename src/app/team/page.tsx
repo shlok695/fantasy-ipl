@@ -9,7 +9,10 @@ import { MatchBreakdownPanel } from "@/components/team/MatchBreakdownPanel";
 import { ExpandableSquadPlayerRow } from "@/components/team/ExpandableSquadPlayerRow";
 import { getCountryFlag, getPlayerImage } from "@/lib/playerIndex";
 import { TeamViewTabs, type TeamViewTabId } from "@/components/team/TeamViewTabs";
-import { formatMatchDateLabel, getLatestAndPreviousTeamMatches } from "@/lib/teamHistory";
+import {
+  getLatestAndPreviousTeamMatches,
+  getTeamMatchDateLabel,
+} from "@/lib/teamHistory";
 import { getPlayerTotalPoints, getTopPlayers, sortPlayersByPoints } from "@/lib/teamMetrics";
 
 export default function MyTeamPage() {
@@ -177,16 +180,16 @@ export default function MyTeamPage() {
           <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Latest Match</p>
           <p className="text-3xl font-black text-cyan-300">{latestMatch ? Math.round(latestMatch.totalPoints) : 0}</p>
           <p className="text-xs text-gray-500 mt-2">{latestMatch?.compactMatchLabel || "No match points yet"}</p>
-          {latestMatch && formatMatchDateLabel(latestMatch.startedAt) && (
-            <p className="text-[11px] text-gray-500 mt-1">{formatMatchDateLabel(latestMatch.startedAt)}</p>
+          {getTeamMatchDateLabel(latestMatch) && (
+            <p className="text-[11px] text-gray-500 mt-1">{getTeamMatchDateLabel(latestMatch)}</p>
           )}
         </div>
         <div className="glass-card p-5">
           <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Previous Match</p>
           <p className="text-3xl font-black text-violet-300">{previousMatch ? Math.round(previousMatch.totalPoints) : 0}</p>
           <p className="text-xs text-gray-500 mt-2">{previousMatch?.compactMatchLabel || "Waiting for next score"}</p>
-          {previousMatch && formatMatchDateLabel(previousMatch.startedAt) && (
-            <p className="text-[11px] text-gray-500 mt-1">{formatMatchDateLabel(previousMatch.startedAt)}</p>
+          {getTeamMatchDateLabel(previousMatch) && (
+            <p className="text-[11px] text-gray-500 mt-1">{getTeamMatchDateLabel(previousMatch)}</p>
           )}
         </div>
         <div className="glass-card p-5">
