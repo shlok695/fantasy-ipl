@@ -13,7 +13,10 @@ import { TeamViewTabs, type TeamViewTabId } from "@/components/team/TeamViewTabs
 import { useLeagueData } from "@/components/league/useLeagueData";
 import { getTeamById } from "@/lib/leagueData";
 import { getCountryFlag } from "@/lib/playerIndex";
-import { formatMatchDateLabel, getLatestAndPreviousTeamMatches } from "@/lib/teamHistory";
+import {
+  getLatestAndPreviousTeamMatches,
+  getTeamMatchDateLabel,
+} from "@/lib/teamHistory";
 import { sortPlayersByPoints } from "@/lib/teamMetrics";
 
 export function TeamDetailClientPage({ teamId }: { teamId: string }) {
@@ -133,16 +136,16 @@ export function TeamDetailClientPage({ teamId }: { teamId: string }) {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Latest Match</p>
                 <p className="mt-1 text-3xl font-black text-cyan-200">{latestMatch ? Math.round(latestMatch.totalPoints) : 0}</p>
                 <p className="mt-1 text-xs text-slate-400">{latestMatch?.compactMatchLabel || "No match points yet"}</p>
-                {latestMatch && formatMatchDateLabel(latestMatch.startedAt) && (
-                  <p className="mt-1 text-[11px] text-slate-500">{formatMatchDateLabel(latestMatch.startedAt)}</p>
+                {getTeamMatchDateLabel(latestMatch) && (
+                  <p className="mt-1 text-[11px] text-slate-500">{getTeamMatchDateLabel(latestMatch)}</p>
                 )}
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Previous Match</p>
                 <p className="mt-1 text-3xl font-black text-indigo-200">{previousMatch ? Math.round(previousMatch.totalPoints) : 0}</p>
                 <p className="mt-1 text-xs text-slate-400">{previousMatch?.compactMatchLabel || "Waiting for next score"}</p>
-                {previousMatch && formatMatchDateLabel(previousMatch.startedAt) && (
-                  <p className="mt-1 text-[11px] text-slate-500">{formatMatchDateLabel(previousMatch.startedAt)}</p>
+                {getTeamMatchDateLabel(previousMatch) && (
+                  <p className="mt-1 text-[11px] text-slate-500">{getTeamMatchDateLabel(previousMatch)}</p>
                 )}
               </div>
             </div>

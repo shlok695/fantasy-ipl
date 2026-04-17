@@ -40,15 +40,25 @@ export interface TeamMatchPlayerBreakdown {
   stats: ParsedStats | null;
 }
 
+export interface TeamMatchBonusBreakdown {
+  kind: "partner-win" | "partner-shared";
+  label: string;
+  description: string;
+  points: number;
+  teamCode: string;
+}
+
 export interface TeamMatchBreakdown {
   matchId: string;
   matchLabel: string;
   compactMatchLabel: string;
   totalPoints: number;
+  bonusPoints: number;
   createdAt?: string;
   /** Match kickoff / start from synced `Match.startedAt` when available */
   startedAt?: string | null;
   players: TeamMatchPlayerBreakdown[];
+  bonuses: TeamMatchBonusBreakdown[];
 }
 
 /** User-facing date for a match or point entry (local timezone). */
@@ -62,6 +72,11 @@ export function formatMatchDateLabel(iso?: string | Date | null): string | null 
     month: "short",
     day: "numeric",
   });
+}
+
+export function getTeamMatchDateLabel(match?: Pick<TeamMatchBreakdown, "startedAt" | "createdAt"> | null) {
+  if (!match) return null;
+  return formatMatchDateLabel(match.startedAt || match.createdAt || null);
 }
 
 export function getPointEntryDateLabel(entry: PlayerPointEntry): string | null {
@@ -90,17 +105,119 @@ function getMatchSortValue(entry: PlayerPointEntry) {
     return startedAt;
   }
 
+  const createdAt = entry.createdAt ? new Date(entry.createdAt).getTime() : 0;
+  if (Number.isFinite(createdAt) && createdAt > 0) {
+    return createdAt;
+  }
+
+  const updatedAt = entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
+  if (Number.isFinite(updatedAt) && updatedAt > 0) {
+    return updatedAt;
+  }
+
   const matchNumber = Number.parseInt(entry.matchId || "", 10);
   if (!Number.isNaN(matchNumber)) {
     return matchNumber;
   }
 
-  const createdAt = entry.createdAt ? new Date(entry.createdAt).getTime() : 0;
-  return Number.isFinite(createdAt) ? createdAt : 0;
+  return 0;
 }
 
 export function getPointEntryMatchLabel(entry: PlayerPointEntry, format: "compact" | "standard" | "full" = "standard") {
   return formatMatchLabel(entry.matchId, format, entry.match || null);
+}
+
+const IPL_TEAM_CODE_ALIASES: Record<string, string> = {
+  "csk": "CSK",
+  "chennai super kings": "CSK",
+  "dc": "DC",
+  "delhi capitals": "DC",
+  "gt": "GT",
+  "gujarat titans": "GT",
+  "kkr": "KKR",
+  "kolkata knight riders": "KKR",
+  "lsg": "LSG",
+  "lucknow super giants": "LSG",
+  "mi": "MI",
+  "mumbai indians": "MI",
+  "pbks": "PBKS",
+  "punjab kings": "PBKS",
+  "rr": "RR",
+  "rajasthan royals": "RR",
+  "rcb": "RCB",
+  "royal challengers bengaluru": "RCB",
+  "royal challengers bangalore": "RCB",
+  "srh": "SRH",
+  "sunrisers hyderabad": "SRH",
+};
+
+function normalizeIplTeamCode(value?: string | null): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+
+  const compact = raw.toUpperCase().replace(/\s+/g, "");
+  if (Object.values(IPL_TEAM_CODE_ALIASES).includes(compact)) {
+    return compact;
+  }
+
+  return IPL_TEAM_CODE_ALIASES[raw.toLowerCase()] || null;
+}
+
+function detectWinningIplTeamCode(statusText?: string | null): string | null {
+  const candidateText = String(statusText || "").toLowerCase();
+  if (!candidateText.includes("won")) {
+    return null;
+  }
+
+  for (const [teamName, code] of Object.entries(IPL_TEAM_CODE_ALIASES)) {
+    if (candidateText.includes(teamName)) {
+      return code;
+    }
+  }
+
+  return null;
+}
+
+function isSharedResultStatus(statusText?: string | null): boolean {
+  return /\b(no result|abandon(?:ed)?|washout)\b/.test(String(statusText || "").toLowerCase());
+}
+
+function inferPartnerBonusForMatch(
+  match: TeamMatchBreakdown,
+  teamIplCode?: string | null
+): TeamMatchBonusBreakdown | null {
+  const userTeamCode = normalizeIplTeamCode(teamIplCode);
+  if (!userTeamCode || match.players.length === 0) {
+    return null;
+  }
+
+  const matchMeta = match.players[0]?.entry?.match;
+  const status = String(matchMeta?.status || "").trim();
+  const team1Code = normalizeIplTeamCode(matchMeta?.team1Code || matchMeta?.team1Name);
+  const team2Code = normalizeIplTeamCode(matchMeta?.team2Code || matchMeta?.team2Name);
+
+  if (isSharedResultStatus(status) && (userTeamCode === team1Code || userTeamCode === team2Code)) {
+    return {
+      kind: "partner-shared",
+      label: "Shared match bonus",
+      description: `${userTeamCode} received the abandoned/no-result split bonus`,
+      points: 25,
+      teamCode: userTeamCode,
+    };
+  }
+
+  const winnerCode = detectWinningIplTeamCode(status);
+  if (winnerCode && winnerCode === userTeamCode) {
+    return {
+      kind: "partner-win",
+      label: "Partner win bonus",
+      description: `${userTeamCode} received the IPL partner match-win bonus`,
+      points: 50,
+      teamCode: userTeamCode,
+    };
+  }
+
+  return null;
 }
 
 export function getTeamMatchBreakdowns(team: DashboardTeam | null | undefined): TeamMatchBreakdown[] {
@@ -116,9 +233,11 @@ export function getTeamMatchBreakdowns(team: DashboardTeam | null | undefined): 
         matchLabel: getPointEntryMatchLabel(entry, "standard"),
         compactMatchLabel: getPointEntryMatchLabel(entry, "compact"),
         totalPoints: 0,
+        bonusPoints: 0,
         createdAt: entry.createdAt,
         startedAt: entry.match?.startedAt ? String(entry.match.startedAt) : null,
         players: [],
+        bonuses: [],
       };
 
       if (entry.match?.startedAt && !existing.startedAt) {
@@ -152,6 +271,15 @@ export function getTeamMatchBreakdowns(team: DashboardTeam | null | undefined): 
     })
     .map((match) => ({
       ...match,
+      bonusPoints: (() => {
+        const bonus = inferPartnerBonusForMatch(match, team?.iplTeam);
+        return bonus ? bonus.points : 0;
+      })(),
+      bonuses: (() => {
+        const bonus = inferPartnerBonusForMatch(match, team?.iplTeam);
+        return bonus ? [bonus] : [];
+      })(),
+      totalPoints: match.totalPoints,
       players: [...match.players].sort((a, b) => {
         const pointDelta = b.points - a.points;
         if (pointDelta !== 0) return pointDelta;

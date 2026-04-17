@@ -20,7 +20,10 @@ import {
   recalculateLeagueTotalPoints,
   recalculateTeamTotalPoints,
 } from "@/utils/teamScore";
-import { getLiveSyncConfig } from "@/lib/liveSyncConfig";
+import {
+  getLiveSyncConfig,
+  parseConfiguredLiveSyncEntries,
+} from "@/lib/liveSyncConfig";
 import type { MatchStatsProvider } from "@/lib/cricketApi";
 
 type SyncActor = {
@@ -130,6 +133,9 @@ async function writeMatchSyncExternalPlayersAudit(
 
 function normalizeName(value: string) {
   return String(value || "")
+    .replace(/^\(\s*sub\s*\)\s*/i, "")
+    .replace(/^sub(?:stitute)?\s*\(\s*(.*?)\s*\)\s*$/i, "$1")
+    .replace(/^sub(?:stitute)?\s+/i, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -296,6 +302,27 @@ const IPL_TEAM_NAME_ALIASES: Record<string, string> = {
   "sunrisers hyderabad": "SRH",
 };
 
+type PartnerBonusPlan = {
+  kind: "winner" | "shared";
+  auditAction: "PARTNER_WIN_BONUS_AUTO" | "PARTNER_SHARED_BONUS_AUTO";
+  teamCodes: string[];
+  bonusPoints: number;
+};
+
+function normalizeIplTeamCode(value?: string | null): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  const upper = raw.toUpperCase().replace(/\s+/g, "");
+  if (Object.values(IPL_TEAM_NAME_ALIASES).includes(upper)) {
+    return upper;
+  }
+
+  return IPL_TEAM_NAME_ALIASES[raw.toLowerCase()] || null;
+}
+
 function detectWinningIplTeamCode(statusText?: string | null): string | null {
   const candidateText = String(statusText || "").toLowerCase();
   if (!candidateText.includes("won")) {
@@ -311,14 +338,55 @@ function detectWinningIplTeamCode(statusText?: string | null): string | null {
   return null;
 }
 
-let autoSyncPromise: Promise<AutoSyncStatus> | null = null;
-let autoSyncPassiveGate:
-  | {
-      key: string;
-      resumeAt: number;
-      status: AutoSyncStatus;
+function isAbandonedOrNoResultStatus(statusText?: string | null): boolean {
+  const candidateText = String(statusText || "").toLowerCase();
+  return /\b(no result|abandon(?:ed)?|washout)\b/.test(candidateText);
+}
+
+function resolvePartnerBonusPlan(input: {
+  statusText?: string | null;
+  team1Code?: string | null;
+  team2Code?: string | null;
+  team1Name?: string | null;
+  team2Name?: string | null;
+}): PartnerBonusPlan | null {
+  if (isAbandonedOrNoResultStatus(input.statusText)) {
+    const teamCodes = [
+      normalizeIplTeamCode(input.team1Code || input.team1Name),
+      normalizeIplTeamCode(input.team2Code || input.team2Name),
+    ].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
+
+    if (teamCodes.length === 2) {
+      return {
+        kind: "shared" as const,
+        auditAction: "PARTNER_SHARED_BONUS_AUTO" as const,
+        teamCodes,
+        bonusPoints: 25,
+      };
     }
-  | null = null;
+  }
+
+  const winningTeamCode = detectWinningIplTeamCode(input.statusText);
+  if (!winningTeamCode) {
+    return null;
+  }
+
+  return {
+    kind: "winner" as const,
+    auditAction: "PARTNER_WIN_BONUS_AUTO" as const,
+    teamCodes: [winningTeamCode],
+    bonusPoints: 50,
+  };
+}
+
+let autoSyncPromises = new Map<string, Promise<AutoSyncStatus>>();
+let autoSyncPassiveGates = new Map<
+  string,
+  {
+    resumeAt: number;
+    status: AutoSyncStatus;
+  }
+>();
 const MIN_AUTO_SYNC_INTERVAL_MS = 30 * 60_000;
 // Four quota-safe checkpoints per match:
 // 1) ~10 overs first innings
@@ -349,11 +417,22 @@ function setAutoSyncPassiveGate(
   status: AutoSyncStatus,
   resumeAt: number
 ) {
-  autoSyncPassiveGate = {
-    key,
+  autoSyncPassiveGates.set(key, {
     status,
     resumeAt,
-  };
+  });
+}
+
+function getAutoSyncPassiveGate(key: string) {
+  const gate = autoSyncPassiveGates.get(key);
+  if (!gate) {
+    return null;
+  }
+  if (gate.resumeAt <= Date.now()) {
+    autoSyncPassiveGates.delete(key);
+    return null;
+  }
+  return gate;
 }
 
 function getCheckpointAt(matchStartTime: number, checkpoint: number) {
@@ -442,6 +521,23 @@ function getCheckpointForElapsedMinutes(elapsedMinutes: number) {
   }, 0);
 }
 
+function getTimeMs(value?: string | Date | null) {
+  if (!value) {
+    return Number.NaN;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.NaN;
+}
+
+function isWithinWindow(candidateTs: number, anchorTs: number, windowMs: number) {
+  return (
+    Number.isFinite(candidateTs) &&
+    Number.isFinite(anchorTs) &&
+    Math.abs(candidateTs - anchorTs) <= windowMs
+  );
+}
+
 async function findFixtureMatchAliases(
   tx: any,
   requestedMatchId: string,
@@ -472,51 +568,73 @@ async function findFixtureMatchAliases(
   const byDisplayId = await tx.match.findMany({
     where: { displayId },
   });
-  const startedAtTs = meta?.startedAt ? new Date(meta.startedAt).getTime() : Number.NaN;
-
-  return Array.from(
-    new Map(
-      [...directMatches, ...byDisplayId]
-        .filter((match) => {
-          if (ids.includes(String(match.id || "").trim())) {
-            return true;
-          }
-
-          if (!Number.isFinite(startedAtTs)) {
-            return false;
-          }
-
-          const candidateStartedAtTs = match.startedAt
-            ? new Date(match.startedAt).getTime()
-            : Number.NaN;
-          if (
-            Number.isFinite(candidateStartedAtTs) &&
-            Math.abs(candidateStartedAtTs - startedAtTs) <= FIXTURE_MATCH_WINDOW_MS
-          ) {
-            return true;
-          }
-
-          const candidateCreatedAtTs = match.createdAt
-            ? new Date(match.createdAt).getTime()
-            : Number.NaN;
-          return (
-            Number.isFinite(candidateCreatedAtTs) &&
-            Math.abs(candidateCreatedAtTs - startedAtTs) <= FIXTURE_MATCH_WINDOW_MS
-          );
-        })
-        .map((match) => [match.id, match])
-    ).values()
+  const startedAtTs = getTimeMs(meta?.startedAt);
+  const matchesById = new Map(
+    directMatches.map((match: { id: string }) => [match.id, match])
   );
+
+  for (const match of byDisplayId) {
+    const matchId = String(match.id || "").trim();
+    if (!matchId || matchesById.has(matchId) || ids.includes(matchId)) {
+      matchesById.set(match.id, match);
+      continue;
+    }
+
+    const candidateStartedAtTs = getTimeMs(match.startedAt);
+    const candidateCreatedAtTs = getTimeMs(match.createdAt);
+
+    if (
+      isWithinWindow(candidateStartedAtTs, startedAtTs, FIXTURE_MATCH_WINDOW_MS) ||
+      isWithinWindow(candidateCreatedAtTs, startedAtTs, FIXTURE_MATCH_WINDOW_MS)
+    ) {
+      matchesById.set(match.id, match);
+    }
+  }
+
+  if (!Number.isFinite(startedAtTs)) {
+    const unresolvedDisplayIdMatches = byDisplayId.filter(
+      (match: { id: string }) => !matchesById.has(match.id)
+    );
+
+    if (unresolvedDisplayIdMatches.length === 1) {
+      const candidate = unresolvedDisplayIdMatches[0];
+      const nowTs = Date.now();
+      const candidateCreatedAtTs = getTimeMs(candidate.createdAt);
+      const candidateUpdatedAtTs = getTimeMs(candidate.updatedAt);
+
+      if (
+        isWithinWindow(candidateCreatedAtTs, nowTs, FIXTURE_MATCH_WINDOW_MS) ||
+        isWithinWindow(candidateUpdatedAtTs, nowTs, FIXTURE_MATCH_WINDOW_MS)
+      ) {
+        matchesById.set(candidate.id, candidate);
+      }
+    }
+  }
+
+  return Array.from(matchesById.values());
 }
 
 function pickCanonicalFixtureMatch(
-  matches: Array<{ id: string; createdAt?: Date | string | null }>
+  matches: Array<{ id: string; createdAt?: Date | string | null; startedAt?: Date | string | null }>
 ) {
   if (matches.length === 0) {
     return null;
   }
 
   return [...matches].sort((left, right) => {
+    const leftStartedAt = getTimeMs(left.startedAt);
+    const rightStartedAt = getTimeMs(right.startedAt);
+    const leftHasStartedAt = Number.isFinite(leftStartedAt);
+    const rightHasStartedAt = Number.isFinite(rightStartedAt);
+
+    if (leftHasStartedAt !== rightHasStartedAt) {
+      return leftHasStartedAt ? -1 : 1;
+    }
+
+    if (leftHasStartedAt && rightHasStartedAt && leftStartedAt !== rightStartedAt) {
+      return leftStartedAt - rightStartedAt;
+    }
+
     const leftCreatedAt = left.createdAt ? new Date(left.createdAt).getTime() : 0;
     const rightCreatedAt = right.createdAt ? new Date(right.createdAt).getTime() : 0;
     if (leftCreatedAt !== rightCreatedAt) {
@@ -644,10 +762,151 @@ async function getAutoSyncRuntimeConfig() {
   return {
     matchId,
     matchStartAt,
+    entries: parseConfiguredLiveSyncEntries({
+      matchId,
+      matchStartAt,
+    }),
     afterOverMinutes,
     intervalMs,
     enabled,
   };
+}
+
+async function maybeAutoSyncSingleConfiguredMatch(config: {
+  enabled: boolean;
+  matchId: string;
+  matchStartAt: string;
+  intervalMs: number;
+}) {
+  const gateKey = buildAutoSyncGateKey({
+    enabled: config.enabled,
+    matchId: String(config.matchId || "").trim(),
+    matchStartAt: String(config.matchStartAt || "").trim(),
+    intervalMs: config.intervalMs,
+  });
+  const now = Date.now();
+  const existingGate = getAutoSyncPassiveGate(gateKey);
+  if (existingGate) {
+    return existingGate.status;
+  }
+
+  const matchId = String(config.matchId || "").trim();
+  const matchStartAt = String(config.matchStartAt || "").trim();
+  if (!matchId || !matchStartAt) {
+    setAutoSyncPassiveGate(gateKey, "throttled", now + 5 * 60_000);
+    return "throttled" as const;
+  }
+
+  const matchStartTime = new Date(matchStartAt).getTime();
+  if (!Number.isFinite(matchStartTime)) {
+    setAutoSyncPassiveGate(gateKey, "throttled", now + 5 * 60_000);
+    return "throttled" as const;
+  }
+
+  const elapsedMinutes = (Date.now() - matchStartTime) / 60_000;
+  const checkpoint = getCheckpointForElapsedMinutes(elapsedMinutes);
+  if (checkpoint === 0) {
+    setAutoSyncPassiveGate(
+      gateKey,
+      "throttled",
+      getCheckpointAt(matchStartTime, 1)
+    );
+    return "throttled" as const;
+  }
+
+  const syncKey = `auto-live-match:${matchId}`;
+  const runningPromise = autoSyncPromises.get(syncKey);
+  if (runningPromise) {
+    return "in-progress" as const;
+  }
+
+  const intervalMs = Math.max(config.intervalMs, MIN_AUTO_SYNC_INTERVAL_MS);
+  const state = await getMatchSyncState(syncKey);
+  const stateAge = state?.lastAttemptAt
+    ? now - new Date(state.lastAttemptAt).getTime()
+    : Number.POSITIVE_INFINITY;
+  const lastCheckpoint = Number(state?.lastCheckpoint || 0);
+
+  if (state?.matchId === matchId && lastCheckpoint >= checkpoint) {
+    const status =
+      checkpoint >= AUTO_SYNC_CHECKPOINT_MINUTES.length
+        ? "already-synced"
+        : "throttled";
+    setAutoSyncPassiveGate(
+      gateKey,
+      status,
+      getNextCheckpointAt(matchStartTime, checkpoint)
+    );
+    return status;
+  }
+
+  if (state?.matchId === matchId && stateAge < intervalMs) {
+    setAutoSyncPassiveGate(
+      gateKey,
+      "throttled",
+      new Date(state.lastAttemptAt || now).getTime() + intervalMs
+    );
+    return "throttled" as const;
+  }
+
+  await upsertMatchSyncState(syncKey, {
+    matchId,
+    lastAttemptAt: new Date(now).toISOString(),
+    lastSuccessAt: state?.lastSuccessAt ?? null,
+    lastError: null,
+    lastCheckpoint,
+  });
+
+  const syncPromise = (async () => {
+    try {
+      await syncMatchPoints(matchId, {
+        name: "system:auto-sync",
+        bypassAdmin: true,
+      });
+
+      await upsertMatchSyncState(syncKey, {
+        matchId,
+        lastAttemptAt: new Date().toISOString(),
+        lastSuccessAt: new Date().toISOString(),
+        lastError: null,
+        lastCheckpoint: checkpoint,
+      });
+
+      setAutoSyncPassiveGate(
+        gateKey,
+        checkpoint >= AUTO_SYNC_CHECKPOINT_MINUTES.length
+          ? "already-synced"
+          : "throttled",
+        getNextCheckpointAt(matchStartTime, checkpoint)
+      );
+
+      return "synced" as const;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown auto-sync error";
+
+      await upsertMatchSyncState(syncKey, {
+        matchId,
+        lastAttemptAt: new Date().toISOString(),
+        lastSuccessAt: state?.lastSuccessAt ?? null,
+        lastError: message.slice(0, 300),
+        lastCheckpoint,
+      });
+
+      setAutoSyncPassiveGate(
+        gateKey,
+        "throttled",
+        getNextCheckpointAt(matchStartTime, checkpoint)
+      );
+
+      return "error" as const;
+    } finally {
+      autoSyncPromises.delete(syncKey);
+    }
+  })();
+
+  autoSyncPromises.set(syncKey, syncPromise);
+  return syncPromise;
 }
 
 export async function syncMatchPoints(matchId: string, actor: SyncActor) {
@@ -695,11 +954,11 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
   const seasonAwardsAlreadyApplied = shouldAutoApplySeasonAwards
     ? await hasAdminAuditAction("SEASON_AWARDS_APPLIED")
     : false;
-  const winningIplTeamCode = detectWinningIplTeamCode(scorecardResult.statusText);
-  let partnerWinBonusTeams = 0;
+  let partnerBonusAppliedTeams = 0;
+  let partnerBonusPlan: PartnerBonusPlan | null = null;
   let effectiveMatchIdForAudit = matchId;
 
-  await prisma.$transaction(async (tx) => {
+  const transactionOutcome = await prisma.$transaction(async (tx) => {
     const rawMatchMeta = scorecardResult.matchMeta
       ? {
           ...scorecardResult.matchMeta,
@@ -722,6 +981,14 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
           id: effectiveMatchId,
         }
       : null;
+    partnerBonusPlan = resolvePartnerBonusPlan({
+      statusText:
+        effectiveMatchMeta?.status ?? scorecardResult.statusText ?? null,
+      team1Code: effectiveMatchMeta?.team1Code ?? null,
+      team2Code: effectiveMatchMeta?.team2Code ?? null,
+      team1Name: effectiveMatchMeta?.team1Name ?? null,
+      team2Name: effectiveMatchMeta?.team2Name ?? null,
+    });
     const modifiedTeams = new Set<string>();
     const matchedPlayerIds = new Set<string>();
     const pendingRows: Array<{
@@ -930,7 +1197,7 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
       await recalculateTeamTotalPoints(teamId, tx);
     }
 
-    const partnerWinBonusAlreadyApplied = winningIplTeamCode
+    const partnerBonusAlreadyApplied = partnerBonusPlan
       ? (
           await tx.$queryRawUnsafe<Array<{ id: string }>>(
             `SELECT "id"
@@ -938,28 +1205,38 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
              WHERE "action" = ?
                AND instr(lower("details"), lower(?)) > 0
              LIMIT 1`,
-            "PARTNER_WIN_BONUS_AUTO",
+            partnerBonusPlan.auditAction,
             `match:${effectiveMatchId}`
           )
         ).length > 0
       : false;
 
-    if (winningIplTeamCode && !partnerWinBonusAlreadyApplied) {
-      const partnerTeams = await tx.user.findMany({
-        where: { iplTeam: winningIplTeamCode },
-        select: { id: true },
-      });
-
-      for (const partnerTeam of partnerTeams) {
-        await tx.user.update({
-          where: { id: partnerTeam.id },
-          data: { bonusPoints: { increment: 50 } },
+    if (partnerBonusPlan && !partnerBonusAlreadyApplied) {
+      for (const teamCode of partnerBonusPlan.teamCodes) {
+        const partnerTeams = await tx.user.findMany({
+          where: { iplTeam: teamCode },
+          select: { id: true },
         });
-        await recalculateTeamTotalPoints(partnerTeam.id, tx);
-      }
 
-      partnerWinBonusTeams = partnerTeams.length;
+        for (const partnerTeam of partnerTeams) {
+          await tx.user.update({
+            where: { id: partnerTeam.id },
+            data: { bonusPoints: { increment: partnerBonusPlan.bonusPoints } },
+          });
+          await recalculateTeamTotalPoints(partnerTeam.id, tx);
+        }
+
+        partnerBonusAppliedTeams += partnerTeams.length;
+      }
     }
+
+    const partnerBonusOutcome =
+      partnerBonusPlan && partnerBonusAppliedTeams > 0
+        ? {
+        plan: partnerBonusPlan,
+        appliedTeams: partnerBonusAppliedTeams,
+          }
+        : null;
 
     if (shouldAutoApplySeasonAwards && !seasonAwardsAlreadyApplied) {
       const players = await tx.player.findMany({
@@ -993,7 +1270,12 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
         await recalculateLeagueTotalPoints(tx);
       }
     }
+
+    return {
+      partnerBonusOutcome,
+    };
   });
+  const partnerBonusOutcome = transactionOutcome.partnerBonusOutcome;
 
   const auditMatchDetails =
     effectiveMatchIdForAudit === matchId
@@ -1024,11 +1306,11 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
     );
   }
 
-  if (winningIplTeamCode && partnerWinBonusTeams > 0) {
+  if (partnerBonusOutcome) {
     await recordAdminAudit(
       actor.name || "system",
-      "PARTNER_WIN_BONUS_AUTO",
-      `match:${effectiveMatchIdForAudit} team:${winningIplTeamCode} count:${partnerWinBonusTeams}`
+      partnerBonusOutcome.plan.auditAction,
+      `match:${effectiveMatchIdForAudit} teams:${partnerBonusOutcome.plan.teamCodes.join(",")} points:${partnerBonusOutcome.plan.bonusPoints} count:${partnerBonusOutcome.appliedTeams}`
     );
   }
 
@@ -1045,145 +1327,51 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
     provider: scorecardResult.provider,
     fallbackReason: scorecardResult.fallbackReason || null,
     playersMatched: successfullyMatched,
-    message: `Successfully synced ${successfullyMatched} players from match ${matchId} using ${scorecardResult.provider}.${unchangedRecords > 0 ? ` ${unchangedRecords} rows were already up to date.` : ""}${staleRowsDeleted > 0 ? ` ${staleRowsDeleted} stale rows were removed.` : ""}${winningIplTeamCode && partnerWinBonusTeams > 0 ? ` Partner bonus applied for ${winningIplTeamCode}.` : ""}${seasonAwardWinners.length > 0 ? " Season-end awards were applied automatically." : ""}`,
+    message: `Successfully synced ${successfullyMatched} players from match ${matchId} using ${scorecardResult.provider}.${unchangedRecords > 0 ? ` ${unchangedRecords} rows were already up to date.` : ""}${staleRowsDeleted > 0 ? ` ${staleRowsDeleted} stale rows were removed.` : ""}${partnerBonusOutcome ? partnerBonusOutcome.plan.kind === "shared" ? ` Shared partner bonus applied for ${partnerBonusOutcome.plan.teamCodes.join(" and ")}.` : ` Partner bonus applied for ${partnerBonusOutcome.plan.teamCodes[0]}.` : ""}${seasonAwardWinners.length > 0 ? " Season-end awards were applied automatically." : ""}`,
   };
 }
 
 export async function maybeAutoSyncConfiguredMatch(): Promise<AutoSyncStatus> {
   const config = await getAutoSyncRuntimeConfig();
-  const gateKey = buildAutoSyncGateKey({
-    enabled: config.enabled,
-    matchId: String(config.matchId || "").trim(),
-    matchStartAt: String(config.matchStartAt || "").trim(),
-    intervalMs: config.intervalMs,
-  });
-  const now = Date.now();
-
-  if (
-    autoSyncPassiveGate &&
-    autoSyncPassiveGate.key === gateKey &&
-    autoSyncPassiveGate.resumeAt > now
-  ) {
-    return autoSyncPassiveGate.status;
-  }
 
   if (!config.enabled) {
-    setAutoSyncPassiveGate(gateKey, "disabled", now + 5 * 60_000);
     return "disabled";
   }
 
-  const matchId = String(config.matchId || "").trim();
-  const matchStartAt = String(config.matchStartAt || "").trim();
-  if (!matchId || !matchStartAt) {
-    setAutoSyncPassiveGate(gateKey, "throttled", now + 5 * 60_000);
+  if (config.entries.error) {
     return "throttled";
   }
 
-  const matchStartTime = new Date(matchStartAt).getTime();
-  if (!Number.isFinite(matchStartTime)) {
-    setAutoSyncPassiveGate(gateKey, "throttled", now + 5 * 60_000);
-    return "throttled";
-  }
-  const elapsedMinutes = (Date.now() - matchStartTime) / 60_000;
-  const checkpoint = getCheckpointForElapsedMinutes(elapsedMinutes);
-  if (checkpoint === 0) {
-    setAutoSyncPassiveGate(
-      gateKey,
-      "throttled",
-      getCheckpointAt(matchStartTime, 1)
-    );
+  if (config.entries.entries.length === 0) {
     return "throttled";
   }
 
-  if (autoSyncPromise) {
+  const results = await Promise.all(
+    config.entries.entries.map((entry) =>
+      maybeAutoSyncSingleConfiguredMatch({
+        enabled: config.enabled,
+        matchId: entry.matchId,
+        matchStartAt: entry.matchStartAt,
+        intervalMs: config.intervalMs,
+      })
+    )
+  );
+
+  if (results.some((status) => status === "in-progress")) {
     return "in-progress";
   }
-
-  const syncKey = "auto-live-match";
-  const intervalMs = Math.max(config.intervalMs, MIN_AUTO_SYNC_INTERVAL_MS);
-  const state = await getMatchSyncState(syncKey);
-  const stateAge = state?.lastAttemptAt
-    ? now - new Date(state.lastAttemptAt).getTime()
-    : Number.POSITIVE_INFINITY;
-  const lastCheckpoint = Number(state?.lastCheckpoint || 0);
-
-  if (state?.matchId === matchId && lastCheckpoint >= checkpoint) {
-    const status =
-      checkpoint >= AUTO_SYNC_CHECKPOINT_MINUTES.length
-        ? "already-synced"
-        : "throttled";
-    setAutoSyncPassiveGate(
-      gateKey,
-      status,
-      getNextCheckpointAt(matchStartTime, checkpoint)
-    );
-    return status;
+  if (results.some((status) => status === "synced")) {
+    return "synced";
+  }
+  if (results.some((status) => status === "error")) {
+    return "error";
+  }
+  if (results.every((status) => status === "already-synced")) {
+    return "already-synced";
+  }
+  if (results.every((status) => status === "disabled")) {
+    return "disabled";
   }
 
-  if (state?.matchId === matchId && stateAge < intervalMs) {
-    setAutoSyncPassiveGate(
-      gateKey,
-      "throttled",
-      new Date(state.lastAttemptAt || now).getTime() + intervalMs
-    );
-    return "throttled";
-  }
-
-  await upsertMatchSyncState(syncKey, {
-    matchId,
-    lastAttemptAt: new Date(now).toISOString(),
-    lastSuccessAt: state?.lastSuccessAt ?? null,
-    lastError: null,
-    lastCheckpoint,
-  });
-
-  autoSyncPromise = (async () => {
-    try {
-      await syncMatchPoints(matchId, {
-        name: "system:auto-sync",
-        bypassAdmin: true,
-      });
-
-      await upsertMatchSyncState(syncKey, {
-        matchId,
-        lastAttemptAt: new Date().toISOString(),
-        lastSuccessAt: new Date().toISOString(),
-        lastError: null,
-        lastCheckpoint: checkpoint,
-      });
-
-      setAutoSyncPassiveGate(
-        gateKey,
-        checkpoint >= AUTO_SYNC_CHECKPOINT_MINUTES.length
-          ? "already-synced"
-          : "throttled",
-        getNextCheckpointAt(matchStartTime, checkpoint)
-      );
-
-      return "synced" as const;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unknown auto-sync error";
-
-      await upsertMatchSyncState(syncKey, {
-        matchId,
-        lastAttemptAt: new Date().toISOString(),
-        lastSuccessAt: state?.lastSuccessAt ?? null,
-        lastError: message.slice(0, 300),
-        lastCheckpoint,
-      });
-
-      setAutoSyncPassiveGate(
-        gateKey,
-        "throttled",
-        getNextCheckpointAt(matchStartTime, checkpoint)
-      );
-
-      return "error";
-    } finally {
-      autoSyncPromise = null;
-    }
-  })();
-
-  return autoSyncPromise;
+  return "throttled";
 }

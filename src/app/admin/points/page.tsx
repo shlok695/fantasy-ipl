@@ -7,6 +7,45 @@ import { MatchBreakdownPanel } from '@/components/team/MatchBreakdownPanel';
 import { PointsBreakdownTable } from '@/components/team/PointsBreakdownTable';
 import { getPlayerPointHistory, getPointEntryMatchLabel, getTeamMatchBreakdowns } from '@/lib/teamHistory';
 
+function splitConfiguredValues(value: string) {
+  return String(value || '')
+    .split(/[\n,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function appendConfiguredMatch(currentIds: string, currentStarts: string, nextId: string, nextStartAt: string) {
+  const ids = splitConfiguredValues(currentIds);
+  const starts = splitConfiguredValues(currentStarts);
+  const trimmedId = String(nextId || '').trim();
+  const trimmedStart = String(nextStartAt || '').trim();
+
+  if (!trimmedId) {
+    return {
+      matchId: currentIds,
+      matchStartAt: currentStarts,
+    };
+  }
+
+  const existingIndex = ids.findIndex((entry) => entry === trimmedId);
+  if (existingIndex >= 0) {
+    if (trimmedStart) {
+      starts[existingIndex] = trimmedStart;
+    }
+    return {
+      matchId: ids.join('\n'),
+      matchStartAt: starts.join('\n'),
+    };
+  }
+
+  ids.push(trimmedId);
+  starts.push(trimmedStart);
+  return {
+    matchId: ids.join('\n'),
+    matchStartAt: starts.join('\n'),
+  };
+}
+
 function getPlayerTotalPoints(player: any) {
   return (player?.points || []).reduce((sum: number, entry: any) => sum + (entry?.points || 0), 0);
 }
@@ -56,6 +95,7 @@ export default function PointsAdmin() {
   });
   const [liveSyncSaving, setLiveSyncSaving] = useState(false);
   const [detectedLiveMatch, setDetectedLiveMatch] = useState<any>(null);
+  const [detectedLiveMatches, setDetectedLiveMatches] = useState<any[]>([]);
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [showLiveDebug, setShowLiveDebug] = useState(false);
   const [liveDetectionLoading, setLiveDetectionLoading] = useState(false);
@@ -114,10 +154,17 @@ export default function PointsAdmin() {
           intervalMs: String(data.config.intervalMs ?? 1800000),
           enabled: Boolean(data.config.enabled),
         });
-        if (data.config.matchId) {
-          setMatchIdSync(data.config.matchId);
+        const configuredMatchIds = splitConfiguredValues(data.config.matchId || '');
+        if (configuredMatchIds[0]) {
+          setMatchIdSync(configuredMatchIds[0]);
         }
-        setDetectedLiveMatch(data.detectedMatch || null);
+        const detectedMatches = Array.isArray(data.detectedMatches)
+          ? data.detectedMatches
+          : data.detectedMatch
+            ? [data.detectedMatch]
+            : [];
+        setDetectedLiveMatches(detectedMatches);
+        setDetectedLiveMatch(detectedMatches[0] || data.detectedMatch || null);
         setDetectionError(null);
         setLastLiveDetectionAt(new Date().toISOString());
       } else {
@@ -218,6 +265,34 @@ export default function PointsAdmin() {
   const franchiseMatchBreakdowns = useMemo(() => {
     return getTeamMatchBreakdowns(franchiseBreakdownTeam);
   }, [franchiseBreakdownTeam]);
+
+  const detectedMatchSlots = useMemo(() => {
+    const matches = detectedLiveMatches.length > 0
+      ? detectedLiveMatches
+      : detectedLiveMatch
+        ? [detectedLiveMatch]
+        : [];
+
+    return [matches[0] || null, matches[1] || null];
+  }, [detectedLiveMatch, detectedLiveMatches]);
+
+  const addDetectedMatchToConfig = (match: any) => {
+    if (!match?.id) {
+      return;
+    }
+
+    setLiveSyncConfig((current) => ({
+      ...current,
+      enabled: true,
+      ...appendConfiguredMatch(
+        current.matchId,
+        current.matchStartAt,
+        String(match.id || ''),
+        match.dateTimeGMT ? String(match.dateTimeGMT).slice(0, 16) : ''
+      ),
+    }));
+    setMatchIdSync(String(match.id || ''));
+  };
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -432,8 +507,12 @@ export default function PointsAdmin() {
         intervalMs: String(data.config.intervalMs ?? 1800000),
         enabled: Boolean(data.config.enabled),
       });
-      setMatchIdSync(data.config.matchId || '');
-      setSyncMessage({ type: 'success', text: `Live auto-sync ${data.config.enabled ? 'enabled' : 'saved as disabled'} for match ${data.config.matchId || 'not set'}.` });
+      const configuredMatchIds = splitConfiguredValues(data.config.matchId || '');
+      setMatchIdSync(configuredMatchIds[0] || '');
+      setSyncMessage({
+        type: 'success',
+        text: `Live auto-sync ${data.config.enabled ? 'enabled' : 'saved as disabled'} for ${configuredMatchIds.length || 0} configured match${configuredMatchIds.length === 1 ? '' : 'es'}.`,
+      });
       await fetchAuditLogs();
     } catch (err: any) {
       setSyncMessage({ type: 'error', text: err.message });
@@ -554,6 +633,13 @@ export default function PointsAdmin() {
           >
             {liveDetectionLoading ? 'Refreshing...' : 'Refresh Detection'}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowLiveDebug((current) => !current)}
+            className="rounded-xl border border-white/15 bg-black/20 px-3 py-2 text-xs font-black text-white"
+          >
+            {showLiveDebug ? 'Hide API Debug' : 'Show API Debug'}
+          </button>
         </div>
 
         <form onSubmit={saveLiveSyncConfig} className="space-y-4">
@@ -569,25 +655,26 @@ export default function PointsAdmin() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Live Match ID</label>
-              <input
-                type="text"
+              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Live Match IDs</label>
+              <textarea
                 value={liveSyncConfig.matchId}
                 onChange={(e) => setLiveSyncConfig((current) => ({ ...current, matchId: e.target.value }))}
-                placeholder="Optional: leave blank for auto-detect"
-                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base font-mono"
+                placeholder={"One match ID per line\n149699\n736f3e02-212a-49bc-8b3b-08a106312702"}
+                rows={4}
+                className="w-full resize-y bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base font-mono"
               />
-              <p className="mt-1 text-[11px] text-gray-500">Use the detected match button below, then save. Blank match IDs are not used for 4-hit quota mode.</p>
+              <p className="mt-1 text-[11px] text-gray-500">Use one match ID per line. Double-headers are supported when start times below are listed in the same order.</p>
             </div>
             <div>
-              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Match Start Time</label>
-              <input
-                type="datetime-local"
+              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Match Start Times</label>
+              <textarea
                 value={liveSyncConfig.matchStartAt}
                 onChange={(e) => setLiveSyncConfig((current) => ({ ...current, matchStartAt: e.target.value }))}
-                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base"
+                placeholder={"One ISO local datetime per line\n2026-04-04T14:00\n2026-04-04T10:00"}
+                rows={4}
+                className="w-full resize-y bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm sm:text-base font-mono"
               />
-              <p className="mt-1 text-[11px] text-gray-500">Required for 4-hit quota mode. IPL starts are usually 3:30 PM IST or 7:30 PM IST.</p>
+              <p className="mt-1 text-[11px] text-gray-500">Match start times must line up with the IDs above, one per line. IPL double-headers usually have afternoon and evening starts.</p>
             </div>
           </div>
 
@@ -622,70 +709,94 @@ export default function PointsAdmin() {
               : 'Live match detection only checks on page load or when you press refresh.'}
           </p>
 
-          {detectedLiveMatch && (
-            <div className={`rounded-xl border ${detectedLiveMatch.overs < 10 && detectedLiveMatch.status !== 'Finished' ? 'border-amber-400/20 bg-amber-400/10 text-amber-100' : 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100'} px-4 py-3 text-sm`}>
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-bold">Detected IPL match from API</p>
-                <div className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${detectedLiveMatch.status === 'Finished' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-black animate-pulse'}`}>
-                  {detectedLiveMatch.status || 'Live'}
-                </div>
-              </div>
-              <p className="mt-1 font-mono text-xs opacity-80">{detectedLiveMatch.name || detectedLiveMatch.id}</p>
-              <p className="mt-1 text-xs opacity-70">
-                Match ID: {detectedLiveMatch.id} • Overs: {detectedLiveMatch.overs} • {detectedLiveMatch.provider ? String(detectedLiveMatch.provider).toUpperCase() : 'CricAPI'}
-              </p>
-              {(detectedLiveMatch.seriesName || detectedLiveMatch.matchType) && (
-                <p className="mt-1 text-xs opacity-70">
-                  {detectedLiveMatch.seriesName || 'Unknown series'}{detectedLiveMatch.matchType ? ` • ${detectedLiveMatch.matchType}` : ''}
-                </p>
-              )}
-              {detectedLiveMatch.overs < 10 && detectedLiveMatch.status !== 'Finished' && (
-                <p className="mt-2 text-[11px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1">
-                  <RefreshCw size={12} className="animate-spin" /> Waiting for the first scheduled sync checkpoint after 10 overs.
-                </p>
-              )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLiveSyncConfig((current) => ({
-                      ...current,
-                      enabled: true,
-                      matchId: String(detectedLiveMatch.id || ''),
-                      matchStartAt: detectedLiveMatch.dateTimeGMT ? String(detectedLiveMatch.dateTimeGMT).slice(0, 16) : current.matchStartAt,
-                    }));
-                    setMatchIdSync(String(detectedLiveMatch.id || ''));
-                  }}
-                  className="rounded-lg bg-emerald-400 px-3 py-2 text-xs font-black text-slate-950"
+          <div className="grid gap-4 lg:grid-cols-2">
+            {detectedMatchSlots.map((match, index) => {
+              const hasMatch = Boolean(match?.id);
+              const isFinished = String(match?.status || "").toLowerCase().includes("finish");
+              const isEarlyMatch = Number(match?.overs || 0) < 10 && !isFinished;
+
+              return (
+                <div
+                  key={`detected-slot-${index}`}
+                  className={`rounded-xl border px-4 py-3 text-sm ${
+                    hasMatch
+                      ? isEarlyMatch
+                        ? 'border-amber-400/20 bg-amber-400/10 text-amber-100'
+                        : 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100'
+                      : 'border-white/10 bg-black/20 text-gray-400'
+                  }`}
                 >
-                  Use Detected Match
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowLiveDebug((current) => !current)}
-                  className="rounded-lg border border-white/15 bg-black/20 px-3 py-2 text-xs font-black text-white"
-                >
-                  {showLiveDebug ? 'Hide API Debug' : 'Show API Debug'}
-                </button>
-              </div>
-              {showLiveDebug && (
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-cyan-300">API Debug Snapshot</p>
-                  <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-cyan-100">
-                    {JSON.stringify({
-                      provider: detectedLiveMatch.provider || null,
-                      matchId: detectedLiveMatch.id || null,
-                      seriesId: detectedLiveMatch.seriesId || null,
-                      seriesName: detectedLiveMatch.seriesName || null,
-                      matchType: detectedLiveMatch.matchType || null,
-                      status: detectedLiveMatch.status || null,
-                      overs: detectedLiveMatch.overs ?? null,
-                      score: detectedLiveMatch.score || [],
-                      debugPayload: detectedLiveMatch.debugPayload || null,
-                    }, null, 2)}
-                  </pre>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-bold">
+                      {index === 0 ? 'Detected IPL match' : 'Second slot'}
+                    </p>
+                    <div
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        hasMatch
+                          ? isFinished
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-emerald-500 text-black animate-pulse'
+                          : 'bg-slate-500/30 text-slate-200'
+                      }`}
+                    >
+                      {hasMatch ? (match.status || 'Live') : 'Empty'}
+                    </div>
+                  </div>
+
+                  {hasMatch ? (
+                    <>
+                      <p className="mt-1 font-mono text-xs opacity-80">{match.name || match.id}</p>
+                      <p className="mt-1 text-xs opacity-70">
+                        Match ID: {match.id} • Overs: {match.overs} • {match.provider ? String(match.provider).toUpperCase() : 'CricAPI'}
+                      </p>
+                      {(match.seriesName || match.matchType) && (
+                        <p className="mt-1 text-xs opacity-70">
+                          {match.seriesName || 'Unknown series'}{match.matchType ? ` • ${match.matchType}` : ''}
+                        </p>
+                      )}
+                      {isEarlyMatch && (
+                        <p className="mt-2 text-[11px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                          <RefreshCw size={12} className="animate-spin" /> Waiting for the first scheduled sync checkpoint after 10 overs.
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => addDetectedMatchToConfig(match)}
+                          className="rounded-lg bg-emerald-400 px-3 py-2 text-xs font-black text-slate-950"
+                        >
+                          Add Detected Match
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="mt-2 text-xs text-gray-500">
+                      {index === 0
+                        ? 'No live match detected yet.'
+                        : 'No second match detected yet. This slot stays visible on single-match days.'}
+                    </p>
+                  )}
                 </div>
-              )}
+              );
+            })}
+          </div>
+
+          {showLiveDebug && detectedMatchSlots[0] && (
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-cyan-300">API Debug Snapshot</p>
+              <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-cyan-100">
+                {JSON.stringify({
+                  provider: detectedMatchSlots[0].provider || null,
+                  matchId: detectedMatchSlots[0].id || null,
+                  seriesId: detectedMatchSlots[0].seriesId || null,
+                  seriesName: detectedMatchSlots[0].seriesName || null,
+                  matchType: detectedMatchSlots[0].matchType || null,
+                  status: detectedMatchSlots[0].status || null,
+                  overs: detectedMatchSlots[0].overs ?? null,
+                  score: detectedMatchSlots[0].score || [],
+                  debugPayload: detectedMatchSlots[0].debugPayload || null,
+                }, null, 2)}
+              </pre>
             </div>
           )}
 
