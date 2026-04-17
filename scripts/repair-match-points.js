@@ -50,6 +50,9 @@ function cleanPlayerName(value) {
   if (!name) return 'Unknown';
 
   name = name
+    .replace(/^\(\s*sub\s*\)\s*/i, '')
+    .replace(/^sub(?:stitute)?\s*\(\s*(.*?)\s*\)\s*$/i, '$1')
+    .replace(/^sub(?:stitute)?\s+/i, '')
     .replace(/â€ |â€¡/g, '')
     .replace(/[†\u2020\u2021]/g, '')
     .replace(/\(wk\)/gi, '')
@@ -187,6 +190,9 @@ function mapRapidApiScorecard(data) {
 
 function normalizeName(value) {
   return String(value || '')
+    .replace(/^\(\s*sub\s*\)\s*/i, '')
+    .replace(/^sub(?:stitute)?\s*\(\s*(.*?)\s*\)\s*$/i, '$1')
+    .replace(/^sub(?:stitute)?\s+/i, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();

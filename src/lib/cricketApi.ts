@@ -6,6 +6,8 @@ import { createMatchMetaFromRapidScorecard, createMatchMetaRecord } from "./matc
 let cricketApiBlockedUntil = 0;
 const DEFAULT_RAPIDAPI_HOST = "cricbuzz-cricket.p.rapidapi.com";
 const IPL_DETECTION_CACHE_MS = 10 * 60_000;
+const SECOND_FIXTURE_LOOKAHEAD_MS = 2 * 60 * 60_000;
+const T20_MATCH_WINDOW_MS = 5 * 60 * 60_000;
 
 type CachedDetection<T> = {
   value: T;
@@ -14,6 +16,7 @@ type CachedDetection<T> = {
 
 let currentIplSeriesCache: CachedDetection<SeriesSummary | null> | null = null;
 let currentIplMatchCache: CachedDetection<CurrentMatchSummary | null> | null = null;
+let currentIplMatchListCache: CachedDetection<CurrentMatchSummary[] | null> | null = null;
 
 export type MatchStatsProvider = "mock" | "cricapi" | "rapidapi";
 
@@ -159,6 +162,9 @@ function cleanPlayerName(value: unknown): string {
 
   // Common scorecard markers / encoding artifacts (wk dagger, captain markers, etc.)
   name = name
+    .replace(/^\(\s*sub\s*\)\s*/i, "")
+    .replace(/^sub(?:stitute)?\s*\(\s*(.*?)\s*\)\s*$/i, "$1")
+    .replace(/^sub(?:stitute)?\s+/i, "")
     .replace(/â€ |â€¡/g, "")
     .replace(/[†\u2020\u2021]/g, "")
     .replace(/\(wk\)/gi, "")
@@ -1119,6 +1125,211 @@ function parseSeriesDate(raw?: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function getMatchStartTimeMs(match?: CurrentMatchSummary | null) {
+  if (!match?.dateTimeGMT) {
+    return Number.NaN;
+  }
+
+  const timestamp = new Date(match.dateTimeGMT).getTime();
+  return Number.isNaN(timestamp) ? Number.NaN : timestamp;
+}
+
+function getUtcDayKey(timestamp: number) {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function isFinishedMatch(match: CurrentMatchSummary) {
+  const status = String(match.status || "").toLowerCase();
+  return (
+    match.matchEnded === true ||
+    status.includes("won") ||
+    status.includes("result") ||
+    status.includes("complete") ||
+    status.includes("finished")
+  );
+}
+
+function isActivelyLiveMatch(match?: CurrentMatchSummary | null) {
+  if (!match) {
+    return false;
+  }
+
+  const status = String(match.status || "").toLowerCase();
+  if (isFinishedMatch(match)) {
+    return false;
+  }
+
+  return Boolean(
+    match.matchStarted === true ||
+      status.includes("live") ||
+      status.includes("innings") ||
+      status.includes("need") ||
+      status.includes("trail") ||
+      status.includes("require") ||
+      getMatchMaxOvers(match) > 0
+  );
+}
+
+function mergeDetectionDebugRaw(
+  debugRaw: unknown,
+  detection: Record<string, unknown>
+) {
+  if (debugRaw && typeof debugRaw === "object" && !Array.isArray(debugRaw)) {
+    return {
+      ...(debugRaw as Record<string, unknown>),
+      detection,
+    };
+  }
+
+  return {
+    source: debugRaw ?? null,
+    detection,
+  };
+}
+
+function annotateDetectedMatch(
+  match: CurrentMatchSummary,
+  detection: Record<string, unknown>
+): CurrentMatchSummary {
+  return {
+    ...match,
+    debugRaw: mergeDetectionDebugRaw(match.debugRaw, detection),
+  };
+}
+
+function selectRapidApiScheduledDoubleHeaderMatch(
+  matches: CurrentMatchSummary[],
+  nowMs: number
+): CurrentMatchSummary | null {
+  const todayKey = getUtcDayKey(nowMs);
+  const todaysMatches = matches
+    .map((match) => ({
+      match,
+      startAt: getMatchStartTimeMs(match),
+    }))
+    .filter(
+      (entry) =>
+        Number.isFinite(entry.startAt) && getUtcDayKey(entry.startAt) === todayKey
+    )
+    .sort((a, b) => a.startAt - b.startAt);
+
+  if (todaysMatches.length < 2) {
+    return null;
+  }
+
+  const secondFixture = todaysMatches[todaysMatches.length - 1];
+  const previousFixture = todaysMatches[todaysMatches.length - 2];
+  const shouldUseSecondFixture =
+    nowMs >= secondFixture.startAt - SECOND_FIXTURE_LOOKAHEAD_MS ||
+    nowMs >= previousFixture.startAt + T20_MATCH_WINDOW_MS;
+
+  if (!shouldUseSecondFixture) {
+    return null;
+  }
+
+  return annotateDetectedMatch(
+    {
+      ...secondFixture.match,
+      status: secondFixture.match.status || "Scheduled",
+    },
+    {
+      reason: "rapidapi-double-header-second-fixture",
+      matchCountToday: todaysMatches.length,
+      selectedMatchId: secondFixture.match.id || null,
+      selectedStartAt: secondFixture.match.dateTimeGMT || null,
+      earlierMatchId: previousFixture.match.id || null,
+      earlierMatchStartAt: previousFixture.match.dateTimeGMT || null,
+    }
+  );
+}
+
+function shouldPreferScheduledMatch(
+  candidate: CurrentMatchSummary | null,
+  scheduledMatch: CurrentMatchSummary | null,
+  nowMs: number
+) {
+  if (!scheduledMatch) {
+    return false;
+  }
+
+  if (!candidate) {
+    return true;
+  }
+
+  const candidateId = String(candidate.id || "").trim();
+  const scheduledId = String(scheduledMatch.id || "").trim();
+  if (candidateId && scheduledId && candidateId === scheduledId) {
+    return false;
+  }
+
+  if (isActivelyLiveMatch(candidate)) {
+    return false;
+  }
+
+  const scheduledStartAt = getMatchStartTimeMs(scheduledMatch);
+  if (!Number.isFinite(scheduledStartAt) || getUtcDayKey(scheduledStartAt) !== getUtcDayKey(nowMs)) {
+    return false;
+  }
+
+  const candidateStartAt = getMatchStartTimeMs(candidate);
+  if (Number.isFinite(candidateStartAt) && scheduledStartAt < candidateStartAt) {
+    return false;
+  }
+
+  return true;
+}
+
+function isRelevantIplMatchCandidate(match: CurrentMatchSummary, nowMs: number) {
+  const haystack = flattenMatchStrings(match).join(" ").toLowerCase();
+  const looksLikeIpl =
+    haystack.includes("ipl") || haystack.includes("indian premier league");
+  if (!looksLikeIpl) {
+    return false;
+  }
+
+  const liveish = isLiveMatchStatus(match);
+  const startAt = getMatchStartTimeMs(match);
+  const sameDayScheduled =
+    Number.isFinite(startAt) && getUtcDayKey(startAt) === getUtcDayKey(nowMs);
+
+  return liveish || sameDayScheduled || getMatchMaxOvers(match) > 0;
+}
+
+function dedupeAndSortDetectedMatches(matches: CurrentMatchSummary[]) {
+  const seenIds = new Set<string>();
+  return matches
+    .filter((match) => {
+      const id = String(match.id || "").trim();
+      if (!id || seenIds.has(id)) {
+        return false;
+      }
+      seenIds.add(id);
+      return true;
+    })
+    .sort((left, right) => {
+      const leftStart = getMatchStartTimeMs(left);
+      const rightStart = getMatchStartTimeMs(right);
+      const leftHasStart = Number.isFinite(leftStart);
+      const rightHasStart = Number.isFinite(rightStart);
+
+      if (leftHasStart !== rightHasStart) {
+        return leftHasStart ? -1 : 1;
+      }
+
+      if (leftHasStart && rightHasStart && leftStart !== rightStart) {
+        return leftStart - rightStart;
+      }
+
+      const leftOvers = getMatchMaxOvers(left);
+      const rightOvers = getMatchMaxOvers(right);
+      if (leftOvers !== rightOvers) {
+        return rightOvers - leftOvers;
+      }
+
+      return String(left.id || "").localeCompare(String(right.id || ""));
+    });
+}
+
 function getSeriesWindowScore(series: SeriesSummary, now: Date) {
   const start = parseSeriesDate(series.startDate || series.startdate);
   const end = parseSeriesDate(series.endDate || series.enddate);
@@ -1259,6 +1470,25 @@ export async function detectCurrentIplMatch(
   const { isConfigured: cricApiConfigured } = getCricApiConfig();
   const rapidApiConfigured = Boolean(getRapidApiConfig().apiKey);
   let detectedMatch: CurrentMatchSummary | null = null;
+  let rapidScheduleMatchesCache: CurrentMatchSummary[] | null = null;
+
+  async function loadRapidScheduleMatches() {
+    if (!rapidApiConfigured) {
+      return [];
+    }
+
+    if (rapidScheduleMatchesCache) {
+      return rapidScheduleMatchesCache;
+    }
+
+    rapidScheduleMatchesCache = await fetchRapidApiLeagueScheduleMatches();
+    return rapidScheduleMatchesCache;
+  }
+
+  async function getRapidDoubleHeaderMatch() {
+    const scheduledMatches = await loadRapidScheduleMatches();
+    return selectRapidApiScheduledDoubleHeaderMatch(scheduledMatches, nowMs);
+  }
 
   try {
     if (cricApiConfigured) {
@@ -1273,10 +1503,13 @@ export async function detectCurrentIplMatch(
           .sort((a, b) => getMatchMaxOvers(b) - getMatchMaxOvers(a))[0];
 
         if (liveSeriesMatch) {
-          detectedMatch = {
-            ...liveSeriesMatch,
-            provider: "cricapi",
-          };
+          const doubleHeaderMatch = await getRapidDoubleHeaderMatch();
+          detectedMatch = shouldPreferScheduledMatch(liveSeriesMatch, doubleHeaderMatch, nowMs)
+            ? doubleHeaderMatch
+            : {
+                ...liveSeriesMatch,
+                provider: "cricapi",
+              };
           currentIplMatchCache = {
             value: detectedMatch,
             expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
@@ -1295,10 +1528,13 @@ export async function detectCurrentIplMatch(
           })[0];
 
         if (latestSeriesMatch && isLiveMatchStatus(latestSeriesMatch)) {
-          detectedMatch = {
-            ...latestSeriesMatch,
-            provider: "cricapi",
-          };
+          const doubleHeaderMatch = await getRapidDoubleHeaderMatch();
+          detectedMatch = shouldPreferScheduledMatch(latestSeriesMatch, doubleHeaderMatch, nowMs)
+            ? doubleHeaderMatch
+            : {
+                ...latestSeriesMatch,
+                provider: "cricapi",
+              };
           currentIplMatchCache = {
             value: detectedMatch,
             expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
@@ -1331,7 +1567,10 @@ export async function detectCurrentIplMatch(
         .sort((a, b) => b.overs - a.overs);
 
       if (scored[0]?.match) {
-        detectedMatch = scored[0].match;
+        const doubleHeaderMatch = await getRapidDoubleHeaderMatch();
+        detectedMatch = shouldPreferScheduledMatch(scored[0].match, doubleHeaderMatch, nowMs)
+          ? doubleHeaderMatch
+          : scored[0].match;
         currentIplMatchCache = {
           value: detectedMatch,
           expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
@@ -1369,7 +1608,10 @@ export async function detectCurrentIplMatch(
         .sort((a, b) => b.overs - a.overs);
 
       if (rapidScored[0]?.match) {
-        detectedMatch = rapidScored[0].match;
+        const doubleHeaderMatch = await getRapidDoubleHeaderMatch();
+        detectedMatch = shouldPreferScheduledMatch(rapidScored[0].match, doubleHeaderMatch, nowMs)
+          ? doubleHeaderMatch
+          : rapidScored[0].match;
         currentIplMatchCache = {
           value: detectedMatch,
           expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
@@ -1377,7 +1619,20 @@ export async function detectCurrentIplMatch(
         return detectedMatch;
       }
 
-      const scheduledRapidMatches = await fetchRapidApiLeagueScheduleMatches();
+      const scheduledRapidMatches = await loadRapidScheduleMatches();
+      const doubleHeaderMatch = selectRapidApiScheduledDoubleHeaderMatch(
+        scheduledRapidMatches,
+        nowMs
+      );
+      if (doubleHeaderMatch) {
+        detectedMatch = doubleHeaderMatch;
+        currentIplMatchCache = {
+          value: detectedMatch,
+          expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
+        };
+        return detectedMatch;
+      }
+
       const now = Date.now();
       const nearestScheduled = scheduledRapidMatches
         .map((match) => {
@@ -1417,4 +1672,128 @@ export async function detectCurrentIplMatch(
   };
 
   return null;
+}
+
+export async function detectCurrentIplMatches(
+  options: DetectionOptions = {}
+): Promise<CurrentMatchSummary[]> {
+  const forceRefresh = Boolean(options.forceRefresh);
+  const nowMs = Date.now();
+  if (
+    !forceRefresh &&
+    currentIplMatchListCache &&
+    currentIplMatchListCache.expiresAt > nowMs
+  ) {
+    return currentIplMatchListCache.value || [];
+  }
+
+  const { isConfigured: cricApiConfigured } = getCricApiConfig();
+  const rapidApiConfigured = Boolean(getRapidApiConfig().apiKey);
+  const detectedMatches: CurrentMatchSummary[] = [];
+  const seenIds = new Set<string>();
+  const addMatch = (match: CurrentMatchSummary | null | undefined) => {
+    if (!match) {
+      return;
+    }
+
+    const id = String(match.id || "").trim();
+    if (!id || seenIds.has(id)) {
+      return;
+    }
+
+    seenIds.add(id);
+    detectedMatches.push(match);
+  };
+
+  try {
+    if (cricApiConfigured) {
+      const series = await detectCurrentIplSeries({ forceRefresh });
+      if (series?.id) {
+        const seriesInfo = await fetchSeriesInfo(String(series.id));
+        const seriesMatches = (seriesInfo?.matchList || [])
+          .filter((match) =>
+            String(match.matchType || "").toLowerCase().includes("t20")
+          )
+          .filter((match) => isRelevantIplMatchCandidate(match, nowMs))
+          .map((match) => ({
+            ...match,
+            provider: "cricapi" as const,
+          }));
+
+        dedupeAndSortDetectedMatches(seriesMatches).forEach(addMatch);
+        if (detectedMatches.length > 0) {
+          const selected = detectedMatches.slice(0, 2);
+          currentIplMatchListCache = {
+            value: selected,
+            expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
+          };
+          return selected;
+        }
+      }
+
+      const currentMatches = await fetchCurrentMatches();
+      dedupeAndSortDetectedMatches(
+        currentMatches
+          .map((match) => ({
+            ...match,
+            provider: "cricapi" as const,
+          }))
+          .filter((match) => isRelevantIplMatchCandidate(match, nowMs))
+      ).forEach(addMatch);
+      if (detectedMatches.length > 0) {
+        const selected = detectedMatches.slice(0, 2);
+        currentIplMatchListCache = {
+          value: selected,
+          expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
+        };
+        return selected;
+      }
+    }
+  } catch {
+    // Fall through to RapidAPI matching.
+  }
+
+  try {
+    if (rapidApiConfigured) {
+      const rapidMatches = await fetchRapidApiCurrentMatches();
+      const scheduledRapidMatches = await fetchRapidApiLeagueScheduleMatches();
+      const rapidCandidates = dedupeAndSortDetectedMatches(
+        [...rapidMatches, ...scheduledRapidMatches]
+          .map((match) => ({
+            ...match,
+            provider: "rapidapi" as const,
+          }))
+          .filter((match) => isRelevantIplMatchCandidate(match, nowMs))
+      );
+
+      rapidCandidates.forEach(addMatch);
+      if (detectedMatches.length > 0) {
+        const selected = detectedMatches.slice(0, 2);
+        currentIplMatchListCache = {
+          value: selected,
+          expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
+        };
+        return selected;
+      }
+
+      const singleMatch = await detectCurrentIplMatch({ forceRefresh });
+      if (singleMatch) {
+        currentIplMatchListCache = {
+          value: [singleMatch],
+          expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
+        };
+        return [singleMatch];
+      }
+    }
+  } catch {
+    // Ignore and fall back to the single-match detector below.
+  }
+
+  const singleMatch = await detectCurrentIplMatch({ forceRefresh });
+  const selected = singleMatch ? [singleMatch] : [];
+  currentIplMatchListCache = {
+    value: selected,
+    expiresAt: nowMs + IPL_DETECTION_CACHE_MS,
+  };
+  return selected;
 }
