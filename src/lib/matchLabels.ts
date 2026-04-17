@@ -14,6 +14,8 @@ interface MatchLabelMeta {
   fullTeams?: [string, string];
 }
 
+const IPL_TEAM_CODES = new Set(["CSK", "DC", "GT", "KKR", "LSG", "MI", "PBKS", "RR", "RCB", "SRH"]);
+
 const MATCH_LABELS: Record<string, MatchLabelMeta> = {
   "9201": {
     season: "IPL 2024",
@@ -81,6 +83,49 @@ function formatTeams(teams?: [string, string]) {
   return teams ? `${teams[0]} vs ${teams[1]}` : null;
 }
 
+function humanizeDisplayId(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return null;
+  }
+
+  const normalizeTeamToken = (team: string) => {
+    const compact = String(team || "").trim().replace(/\s+/g, "").toUpperCase();
+    if (!compact) {
+      return "";
+    }
+
+    if (compact.endsWith("W")) {
+      const stripped = compact.slice(0, -1);
+      if (IPL_TEAM_CODES.has(stripped)) {
+        return stripped;
+      }
+    }
+
+    return compact;
+  };
+
+  const spaced = text.replace(
+    /\b([A-Za-z0-9]{2,10})\s+vs\s+([A-Za-z0-9]{2,10})\b/gi,
+    (_, left: string, right: string) => `${normalizeTeamToken(left)} vs ${normalizeTeamToken(right)}`
+  );
+
+  const expanded = spaced.replace(
+    /([A-Za-z0-9]{2,10})vs([A-Za-z0-9]{2,10})/g,
+    (_, left: string, right: string) => `${normalizeTeamToken(left)} vs ${normalizeTeamToken(right)}`
+  );
+  return expanded || text;
+}
+
+function normalizeMatchText(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return null;
+  }
+
+  return humanizeDisplayId(text.replace(/\b([A-Za-z0-9]{2,10})\s*vs\s*([A-Za-z0-9]{2,10})\b/gi, "$1vs$2"));
+}
+
 export function formatMatchLabel(
   matchId?: string | null,
   format: MatchLabelFormat = "standard",
@@ -93,11 +138,14 @@ export function formatMatchLabel(
   const meta = MATCH_LABELS[matchId];
 
   const compactFromDb =
-    overrideMeta?.displayId?.trim() ||
-    overrideMeta?.shortTitle?.trim() ||
+    normalizeMatchText(overrideMeta?.shortTitle) ||
+    humanizeDisplayId(overrideMeta?.displayId) ||
     null;
   const fullFromDb =
-    overrideMeta?.title?.trim() || compactFromDb || null;
+    normalizeMatchText(overrideMeta?.title) ||
+    normalizeMatchText(overrideMeta?.shortTitle) ||
+    humanizeDisplayId(overrideMeta?.displayId) ||
+    null;
 
   const compactFromHardcoded = formatTeams(meta?.shortTeams);
   const fullFromHardcoded = formatTeams(meta?.fullTeams);
@@ -123,5 +171,5 @@ export function formatMatchLabel(
     return `Match ${meta.matchNumber} · ${compactLabel}`;
   }
 
-  return compactLabel;
+  return fullLabel;
 }

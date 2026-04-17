@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getLiveSyncConfig, saveLiveSyncConfig } from "@/lib/liveSyncConfig";
+import {
+  getLiveSyncConfig,
+  parseConfiguredLiveSyncEntries,
+  saveLiveSyncConfig,
+} from "@/lib/liveSyncConfig";
 import { recordAdminAudit } from "@/lib/adminAudit";
-import { detectCurrentIplMatch, getMatchMaxOvers } from "@/lib/cricketApi";
+import {
+  detectCurrentIplMatch,
+  detectCurrentIplMatches,
+  getMatchMaxOvers,
+} from "@/lib/cricketApi";
 
 function sanitizeDebugPayload(value: unknown) {
   if (value === null || value === undefined) {
@@ -17,6 +25,22 @@ function sanitizeDebugPayload(value: unknown) {
   }
 }
 
+function serializeDetectedMatch(detectedMatch: NonNullable<Awaited<ReturnType<typeof detectCurrentIplMatch>>>) {
+  return {
+    id: detectedMatch.id,
+    name: detectedMatch.name,
+    status: detectedMatch.status,
+    overs: getMatchMaxOvers(detectedMatch),
+    dateTimeGMT: detectedMatch.dateTimeGMT,
+    provider: detectedMatch.provider || null,
+    matchType: detectedMatch.matchType || null,
+    seriesId: detectedMatch.series_id || null,
+    seriesName: detectedMatch.series_name || null,
+    score: detectedMatch.score || [],
+    debugPayload: sanitizeDebugPayload(detectedMatch.debugRaw),
+  };
+}
+
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
 
@@ -28,24 +52,17 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const forceRefresh = searchParams.get("refresh") === "1";
     const config = await getLiveSyncConfig();
-    const detectedMatch = await detectCurrentIplMatch({ forceRefresh });
+    const detectedMatches = await detectCurrentIplMatches({ forceRefresh });
+    const detectedMatch = detectedMatches[0] || (await detectCurrentIplMatch({ forceRefresh }));
     return NextResponse.json({
       config,
-      detectedMatch: detectedMatch
-        ? {
-            id: detectedMatch.id,
-            name: detectedMatch.name,
-            status: detectedMatch.status,
-            overs: getMatchMaxOvers(detectedMatch),
-            dateTimeGMT: detectedMatch.dateTimeGMT,
-            provider: detectedMatch.provider || null,
-            matchType: detectedMatch.matchType || null,
-            seriesId: detectedMatch.series_id || null,
-            seriesName: detectedMatch.series_name || null,
-            score: detectedMatch.score || [],
-            debugPayload: sanitizeDebugPayload(detectedMatch.debugRaw),
-          }
-        : null,
+      detectedMatches:
+        detectedMatches.length > 0
+          ? detectedMatches.map(serializeDetectedMatch)
+          : detectedMatch
+            ? [serializeDetectedMatch(detectedMatch)]
+            : [],
+      detectedMatch: detectedMatch ? serializeDetectedMatch(detectedMatch) : null,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -68,12 +85,9 @@ export async function POST(request: Request) {
     const afterOverMinutes = Number.parseInt(String(body.afterOverMinutes || ""), 10);
     const intervalMs = Number.parseInt(String(body.intervalMs || ""), 10);
 
-    if (enabled && matchId && !matchStartAt) {
-      return NextResponse.json({ error: "Match start time is required when a manual match ID is configured" }, { status: 400 });
-    }
-
-    if (matchStartAt && Number.isNaN(new Date(matchStartAt).getTime())) {
-      return NextResponse.json({ error: "Match start time is invalid" }, { status: 400 });
+    const parsedEntries = parseConfiguredLiveSyncEntries({ matchId, matchStartAt });
+    if (enabled && parsedEntries.error) {
+      return NextResponse.json({ error: parsedEntries.error }, { status: 400 });
     }
 
     const config = await saveLiveSyncConfig({
