@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errorMessage";
 
-export async function POST(request: Request) {
+export async function POST() {
   const session = await getServerSession(authOptions);
   
   if (!session || !session.user || !(session.user as any).id) {
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, state: result });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 400 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error, "RTM request failed") }, { status: 400 });
   }
 }

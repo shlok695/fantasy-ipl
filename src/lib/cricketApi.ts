@@ -407,49 +407,6 @@ function toTrimmedString(...values: unknown[]) {
   return "";
 }
 
-function parseWrappedNumber(value: unknown) {
-  const text = String(value || "").replace(/[()]/g, "").trim();
-  return toNumber(text);
-}
-
-function parseSelfHostedLivescore(livescore: string): CurrentMatchScore[] {
-  const match = String(livescore || "").match(/(\d+)\s*\/\s*(\d+)\s*\(([\d.]+)\)/);
-  if (!match) {
-    return [];
-  }
-
-  return [
-    {
-      inning: "Current",
-      r: Number.parseInt(match[1], 10),
-      w: Number.parseInt(match[2], 10),
-      o: Number.parseFloat(match[3]),
-    },
-  ];
-}
-
-type SelfHostedScorePayload = {
-  title?: string;
-  update?: string;
-  livescore?: string;
-  runrate?: string;
-  batterone?: string;
-  batsmanonerun?: string;
-  batsmanoneball?: string;
-  battertwo?: string;
-  batsmantworun?: string;
-  batsmantwoball?: string;
-  bowlerone?: string;
-  bowleroneover?: string;
-  bowleronerun?: string;
-  bowleronewickers?: string;
-  bowlertwo?: string;
-  bowlertwoover?: string;
-  bowlertworun?: string;
-  bowlertwowickers?: string;
-  [key: string]: unknown;
-};
-
 function mapFreeDataScorecard(data: any) {
   const inningsList = Object.values(data?.response || {}).filter(
     (entry) => entry && typeof entry === "object"
@@ -1288,14 +1245,65 @@ function isRelevantIplMatchCandidate(match: CurrentMatchSummary, nowMs: number) 
   }
 
   const liveish = isLiveMatchStatus(match);
-  const startAt = getMatchStartTimeMs(match);
-  const sameDayScheduled =
-    Number.isFinite(startAt) && getUtcDayKey(startAt) === getUtcDayKey(nowMs);
+  const sameDayScheduled = isSameDetectionDay(match, nowMs);
 
   return liveish || sameDayScheduled || getMatchMaxOvers(match) > 0;
 }
 
-function dedupeAndSortDetectedMatches(matches: CurrentMatchSummary[]) {
+function getDetectionDayKey(timestamp: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(timestamp);
+}
+
+function isSameDetectionDay(match: CurrentMatchSummary, nowMs: number) {
+  const startAt = getMatchStartTimeMs(match);
+  return (
+    Number.isFinite(startAt) &&
+    getDetectionDayKey(startAt) === getDetectionDayKey(nowMs)
+  );
+}
+
+function getDetectionPriority(match: CurrentMatchSummary, nowMs: number) {
+  const startAt = getMatchStartTimeMs(match);
+  const activeLive = isActivelyLiveMatch(match);
+  const finished = isFinishedMatch(match);
+  const sameDay = isSameDetectionDay(match, nowMs);
+  const upcomingToday =
+    !finished && sameDay && Number.isFinite(startAt) && startAt >= nowMs;
+  const startedToday =
+    !finished && sameDay && Number.isFinite(startAt) && startAt < nowMs;
+  const recentFinished =
+    finished &&
+    Number.isFinite(startAt) &&
+    nowMs - startAt <= 24 * 60 * 60_000;
+
+  if (activeLive) {
+    return 0;
+  }
+
+  if (upcomingToday) {
+    return 1;
+  }
+
+  if (startedToday) {
+    return 2;
+  }
+
+  if (recentFinished) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function dedupeAndSortDetectedMatches(
+  matches: CurrentMatchSummary[],
+  nowMs: number
+) {
   const seenIds = new Set<string>();
   return matches
     .filter((match) => {
@@ -1307,21 +1315,35 @@ function dedupeAndSortDetectedMatches(matches: CurrentMatchSummary[]) {
       return true;
     })
     .sort((left, right) => {
+      const leftPriority = getDetectionPriority(left, nowMs);
+      const rightPriority = getDetectionPriority(right, nowMs);
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+
       const leftStart = getMatchStartTimeMs(left);
       const rightStart = getMatchStartTimeMs(right);
+      const leftOvers = getMatchMaxOvers(left);
+      const rightOvers = getMatchMaxOvers(right);
+
+      if (leftPriority === 0 && leftOvers !== rightOvers) {
+        return rightOvers - leftOvers;
+      }
+
       const leftHasStart = Number.isFinite(leftStart);
       const rightHasStart = Number.isFinite(rightStart);
-
       if (leftHasStart !== rightHasStart) {
         return leftHasStart ? -1 : 1;
       }
 
       if (leftHasStart && rightHasStart && leftStart !== rightStart) {
-        return leftStart - rightStart;
+        if (leftPriority === 1) {
+          return leftStart - rightStart;
+        }
+
+        return rightStart - leftStart;
       }
 
-      const leftOvers = getMatchMaxOvers(left);
-      const rightOvers = getMatchMaxOvers(right);
       if (leftOvers !== rightOvers) {
         return rightOvers - leftOvers;
       }
@@ -1720,7 +1742,7 @@ export async function detectCurrentIplMatches(
             provider: "cricapi" as const,
           }));
 
-        dedupeAndSortDetectedMatches(seriesMatches).forEach(addMatch);
+        dedupeAndSortDetectedMatches(seriesMatches, nowMs).forEach(addMatch);
         if (detectedMatches.length > 0) {
           const selected = detectedMatches.slice(0, 2);
           currentIplMatchListCache = {
@@ -1738,7 +1760,8 @@ export async function detectCurrentIplMatches(
             ...match,
             provider: "cricapi" as const,
           }))
-          .filter((match) => isRelevantIplMatchCandidate(match, nowMs))
+          .filter((match) => isRelevantIplMatchCandidate(match, nowMs)),
+        nowMs
       ).forEach(addMatch);
       if (detectedMatches.length > 0) {
         const selected = detectedMatches.slice(0, 2);
@@ -1763,7 +1786,8 @@ export async function detectCurrentIplMatches(
             ...match,
             provider: "rapidapi" as const,
           }))
-          .filter((match) => isRelevantIplMatchCandidate(match, nowMs))
+          .filter((match) => isRelevantIplMatchCandidate(match, nowMs)),
+        nowMs
       );
 
       rapidCandidates.forEach(addMatch);

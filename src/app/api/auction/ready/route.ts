@@ -3,8 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { pushNextPlayer } from "@/lib/auctionEngine";
+import { getErrorMessage } from "@/lib/errorMessage";
 
-export async function POST(request: Request) {
+export async function POST() {
   const session = await getServerSession(authOptions);
   
   if (!session || !session.user || !(session.user as any).id) {
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not in summary phase" });
     }
 
-    let readyTeams = state.readyTeams ? state.readyTeams.split(',').filter(id => id.trim() !== '') : [];
+    const readyTeams = state.readyTeams ? state.readyTeams.split(',').filter(id => id.trim() !== '') : [];
     
     // Add this user if they haven't readied up
     if (session?.user && !readyTeams.includes((session.user as any).id)) {
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
         total: activeTeams 
       });
     }
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error, "Failed to mark team ready") }, { status: 500 });
   }
 }

@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
+import { getErrorMessage } from '@/lib/errorMessage';
 import { maybeAutoSyncConfiguredMatch } from '@/lib/matchSync';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
   try {
@@ -46,9 +49,13 @@ export async function GET() {
         { name: 'asc' }
       ]
     });
-    return NextResponse.json(users);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json(users, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      },
+    });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -68,8 +75,10 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(newTeam);
-  } catch (e: any) {
-    if (e.code === 'P2002') return NextResponse.json({ error: "Team name already exists" }, { status: 400 });
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    if ((error as Prisma.PrismaClientKnownRequestError)?.code === 'P2002') {
+      return NextResponse.json({ error: "Team name already exists" }, { status: 400 });
+    }
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

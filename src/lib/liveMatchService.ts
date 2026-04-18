@@ -116,7 +116,7 @@ export function mapExternalMatchToInternal(match: ExternalMatch) {
       status: match.status || 'Live',
       raw: match
     };
-  } catch (e) {
+  } catch {
     console.error('[LiveSync] Mapping failure for match:', match.id);
     return null;
   }
