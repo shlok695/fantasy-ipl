@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState, useRef } from 'react';
+/* eslint-disable @next/next/no-img-element */
+
+import Image from 'next/image';
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Gavel, Clock, Trophy, AlertTriangle, Zap, UserX, Activity, UserCheck, LayoutDashboard } from 'lucide-react';
+import { Gavel, Trophy, Zap, UserX, Activity, UserCheck } from 'lucide-react';
 import { getPlayerImage, getCountryFlag, getPlayerMeta, getFranchiseFlag } from '@/lib/playerIndex';
 import { basePath } from '@/lib/basePath';
 
@@ -43,8 +46,8 @@ export default function LiveAuctionRoom() {
         setLiveRoomHidden(false);
         setLiveState(data.state);
       }
-    } catch (e) {
-      console.error("Live sync failed", e);
+    } catch (error) {
+      console.error("Live sync failed", error);
     }
   };
 
@@ -57,8 +60,8 @@ export default function LiveAuctionRoom() {
 
       const data = await res.json();
       setTeams(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Team sync failed", e);
+    } catch (error) {
+      console.error("Team sync failed", error);
       setTeams([]);
     }
   };
@@ -68,7 +71,7 @@ export default function LiveAuctionRoom() {
       const res = await fetch(`${basePath}/api/auction/stats`);
       const data = await res.json();
       setStats(data);
-    } catch (e) {}
+    } catch {}
   };
 
   useEffect(() => {
@@ -114,7 +117,7 @@ export default function LiveAuctionRoom() {
         setCustomBid('');
         await fetchLiveState(); // instantly reflect
       }
-    } catch (e) {
+    } catch {
       alert("Network Error");
     } finally {
       setIsBidding(false);
@@ -144,7 +147,7 @@ export default function LiveAuctionRoom() {
     try {
       await fetch(`${basePath}/api/auction/ready`, { method: 'POST' });
       await fetchLiveState();
-    } catch (e) { console.error(e); }
+    } catch (error) { console.error(error); }
   };
 
   const isAuctionActive = player && liveState.status === "BIDDING";
@@ -165,7 +168,7 @@ export default function LiveAuctionRoom() {
       const res = await fetch(`${basePath}/api/auction/rtm`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) alert(data.error);
-    } catch (e) { alert("RTM Failed"); }
+    } catch { alert("RTM Failed"); }
   };
 
   // Default increments
@@ -245,7 +248,7 @@ export default function LiveAuctionRoom() {
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/10 via-black to-black opacity-50"></div>
                 <UserX size={60} className="sm:w-20 sm:h-20 mb-4 sm:mb-6 opacity-30 relative z-10" />
                 <h2 className="text-xl sm:text-3xl font-black text-white/50 mb-2 relative z-10 text-center">Waiting for Auctioneer...</h2>
-                <p className="text-sm sm:text-lg text-gray-400 relative z-10 mb-6 sm:mb-8 text-center max-w-sm">The admin hasn't pushed the next player to the stage yet.</p>
+                <p className="text-sm sm:text-lg text-gray-400 relative z-10 mb-6 sm:mb-8 text-center max-w-sm">The admin hasn&apos;t pushed the next player to the stage yet.</p>
                 
                 {session?.user?.name === 'admin' && (
                   <button 
@@ -272,9 +275,9 @@ export default function LiveAuctionRoom() {
                           // Immediately fetch the updated live state
                           await fetchLiveState();
                         }
-                      } catch (e: any) {
-                        console.error("Fetch Error:", e);
-                        alert("Client-side error: " + e.message);
+                      } catch (error: unknown) {
+                        console.error("Fetch Error:", error);
+                        alert("Client-side error: " + (error instanceof Error ? error.message : "Unknown error"));
                       }
                     }}
                     className="relative z-10 px-6 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-400 hover:to-blue-400 text-white font-black text-sm sm:text-xl shadow-2xl shadow-indigo-500/40 transition-all active:scale-95 animate-pulse"
@@ -319,9 +322,11 @@ export default function LiveAuctionRoom() {
                       <Trophy size={24} className="sm:w-8 sm:h-8" />
                     </div>
                   )}
-                  <img
+                  <Image
                     src={getPlayerImage(player.name, player.role)}
                     alt={player.name}
+                    width={192}
+                    height={192}
                     className="w-32 h-32 md:w-48 md:h-48 rounded-2xl md:rounded-3xl border-4 border-white/10 shadow-2xl relative z-10 object-cover bg-black"
                   />
                   {getCountryFlag(player.country) && (
@@ -403,8 +408,8 @@ export default function LiveAuctionRoom() {
                                 // Immediately fetch the updated live state
                                 await fetchLiveState();
                               }
-                            } catch (e: any) {
-                              alert("Error pushing next player: " + e.message);
+                            } catch (error: unknown) {
+                              alert("Error pushing next player: " + (error instanceof Error ? error.message : "Unknown error"));
                             }
                           }}
                           className="w-full py-3.5 sm:py-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-white font-black text-lg sm:text-xl shadow-lg shadow-amber-500/25 transition-all outline-none"

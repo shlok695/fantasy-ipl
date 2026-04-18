@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { recordAdminAudit } from '@/lib/adminAudit';
+import { getErrorMessage } from '@/lib/errorMessage';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     });
     await recordAdminAudit(session.user!.name || 'admin', 'TEAM_BUDGET_EDIT', `${team.name} budget:${newBudget}`);
     return NextResponse.json({ success: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

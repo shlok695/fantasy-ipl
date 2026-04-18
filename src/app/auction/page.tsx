@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+/* eslint-disable @next/next/no-img-element */
+
+import Image from 'next/image';
+import { useCallback, useEffect, useState } from 'react';
 import { Search, Gavel, UserCheck, UserX, Activity, ListChecks } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { getPlayerImage, getCountryFlag, getPlayerMeta, getFranchiseFlag } from '@/lib/playerIndex';
@@ -52,7 +55,7 @@ export default function AuctionRoom() {
         const res = await fetch(`${basePath}/api/auction/live`);
         const data = await res.json();
         if (data.state) setLiveState(data.state);
-      } catch(e) {}
+      } catch {}
     };
     snapLive();
     const iv = setInterval(snapLive, 1500);
@@ -64,33 +67,35 @@ export default function AuctionRoom() {
     if (liveState?.player) {
       setSelectedPlayer(liveState.player);
     }
-  }, [liveState?.player?.id]);
+  }, [liveState?.player]);
 
-  const fetchPlayersList = async () => {
+  const fetchPlayersList = useCallback(async () => {
     try {
       const res = await fetch(`${basePath}/api/players?status=${activeTab}&q=${searchTerm}`);
       const data = await res.json();
       setPlayers(data);
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
     }
-  };
+  }, [activeTab, searchTerm]);
 
-  const fetchTeams = async () => {
+  const fetchTeams = useCallback(async () => {
     try {
       const res = await fetch(`${basePath}/api/teams`);
       const data = await res.json();
       setTeams(data);
-    } catch (e) { console.error(e); }
-  };
-
-  useEffect(() => {
-    fetchPlayersList();
-  }, [searchTerm, activeTab]);
-
-  useEffect(() => {
-    fetchTeams();
+    } catch (error) {
+      console.error(error);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchPlayersList();
+  }, [fetchPlayersList]);
+
+  useEffect(() => {
+    void fetchTeams();
+  }, [fetchTeams]);
 
   useEffect(() => {
     const fetchLiveRoomVisibility = async () => {
@@ -131,9 +136,9 @@ export default function AuctionRoom() {
       setSelectedPlayer(null);
       setBidAmount('');
       setSelectedTeamId('');
-      fetchPlayersList();
-      fetchTeams(); // refresh budgets
-    } catch (e) {
+      void fetchPlayersList();
+      void fetchTeams(); // refresh budgets
+    } catch {
       alert("Failed to assign player");
     } finally {
       setLoading(false);
@@ -169,8 +174,8 @@ export default function AuctionRoom() {
         alert(actionStr === "START" ? "Player pushed to Live Stage! Open /auction/live to watch." : "Action Successful!");
         if (actionStr === "SELL" || actionStr === "UNSOLD") {
            setSelectedPlayer(null);
-           fetchPlayersList();
-           fetchTeams();
+           void fetchPlayersList();
+           void fetchTeams();
         }
       }
     } catch (e: any) {
@@ -278,7 +283,7 @@ export default function AuctionRoom() {
                 <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <img src={getPlayerImage(p.name, p.role)} alt={p.name} className="w-10 h-10 rounded-full border border-white/10 shadow-lg object-cover bg-black" />
+                    <Image src={getPlayerImage(p.name, p.role)} alt={p.name} width={40} height={40} className="w-10 h-10 rounded-full border border-white/10 shadow-lg object-cover bg-black" />
                     {getCountryFlag(p.country) && (
                       <img src={getCountryFlag(p.country)!} alt={p.country || "India"} className="absolute -bottom-1 -right-1 w-4 h-3 object-cover rounded shadow" />
                     )}
@@ -335,7 +340,7 @@ export default function AuctionRoom() {
 
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 text-center sm:text-left">
                 <div className="relative shrink-0">
-                  <img src={getPlayerImage(selectedPlayer.name, selectedPlayer.role)} alt={selectedPlayer.name} className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white/10 shadow-2xl transition-transform object-cover bg-black" />
+                  <Image src={getPlayerImage(selectedPlayer.name, selectedPlayer.role)} alt={selectedPlayer.name} width={128} height={128} className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white/10 shadow-2xl transition-transform object-cover bg-black" />
                   {getCountryFlag(selectedPlayer.country) && (
                     <img src={getCountryFlag(selectedPlayer.country)!} alt={selectedPlayer.country || "India"} className="absolute -bottom-2 -right-1 sm:-bottom-3 sm:-right-3 w-8 h-6 sm:w-10 sm:h-7 object-cover rounded shadow-lg border border-white/20 z-20" />
                   )}

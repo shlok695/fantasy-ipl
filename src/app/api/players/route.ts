@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { getErrorMessage } from '@/lib/errorMessage';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status'); // 'unsold' or 'sold' or all
   const q = searchParams.get('q'); // search name
 
-  let whereClause: any = {};
+  const whereClause: Prisma.PlayerWhereInput = {};
 
   if (status === 'upcoming') {
     whereClause.userId = null;
@@ -48,7 +50,7 @@ export async function GET(request: Request) {
       orderBy: { number: 'asc' },
     });
     return NextResponse.json(players);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

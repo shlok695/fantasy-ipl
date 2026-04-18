@@ -4,11 +4,14 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import type { DashboardPlayer } from '@/components/dashboard/types';
+
+type SoldPlayer = DashboardPlayer;
 
 export default function AdminSoldPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [soldItems, setSoldItems] = useState<any[]>([]);
+  const [soldItems, setSoldItems] = useState<SoldPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -38,7 +41,7 @@ export default function AdminSoldPage() {
     }
   }, [session]);
 
-  const filteredItems = soldItems.filter(item => 
+  const filteredItems = soldItems.filter((item) => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.user?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );

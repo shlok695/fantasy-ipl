@@ -2,11 +2,11 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import {
+  detectCurrentIplMatches,
   fetchLiveMatchStatsWithProvider,
 } from "@/lib/cricketApi";
 import {
   hasAdminAuditAction,
-  hasAdminAuditEntry,
   recordAdminAudit,
   recordAdminAuditExtended,
 } from "@/lib/adminAudit";
@@ -379,8 +379,8 @@ function resolvePartnerBonusPlan(input: {
   };
 }
 
-let autoSyncPromises = new Map<string, Promise<AutoSyncStatus>>();
-let autoSyncPassiveGates = new Map<
+const autoSyncPromises = new Map<string, Promise<AutoSyncStatus>>();
+const autoSyncPassiveGates = new Map<
   string,
   {
     resumeAt: number;
@@ -397,6 +397,38 @@ const AUTO_SYNC_CHECKPOINT_MINUTES = [60, 120, 180, 270];
 const MIN_MATCHED_PLAYER_RATIO = 0.5;
 const MIN_MATCHED_PLAYER_COUNT = 8;
 const FIXTURE_MATCH_WINDOW_MS = 36 * 60 * 60_000;
+const IPL_SCHEDULE_TIME_ZONE = "America/New_York";
+const AUTO_SYNC_RETRY_DELAY_MS = 5 * 60_000;
+const MAX_AUTO_SYNC_ATTEMPTS_PER_TRIGGER = 2;
+
+type AutoScheduledSyncEntry = {
+  syncKey: string;
+  matchId: string;
+  triggerAt: string;
+};
+
+function decodeConfiguredTriggerState(rawValue: number | null | undefined) {
+  const numeric = Number(rawValue || 0);
+  if (numeric >= 100) {
+    return {
+      checkpoint: Math.floor(numeric / 100),
+      attemptCount: numeric % 100,
+    };
+  }
+
+  return {
+    checkpoint: numeric,
+    attemptCount: 0,
+  };
+}
+
+function encodeConfiguredTriggerState(checkpoint: number, attemptCount: number) {
+  return checkpoint * 100 + attemptCount;
+}
+
+function decodeScheduledAttemptCount(rawValue: number | null | undefined) {
+  return Math.max(0, Number(rawValue || 0));
+}
 
 function buildAutoSyncGateKey(config: {
   enabled: boolean;
@@ -528,6 +560,131 @@ function getTimeMs(value?: string | Date | null) {
 
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) ? timestamp : Number.NaN;
+}
+
+function getTimeZoneParts(
+  value: Date | number | string,
+  timeZone: string
+) {
+  const date = value instanceof Date ? value : new Date(value);
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value || "0000";
+  const month = parts.find((part) => part.type === "month")?.value || "01";
+  const day = parts.find((part) => part.type === "day")?.value || "01";
+  const hour = Number.parseInt(
+    parts.find((part) => part.type === "hour")?.value || "0",
+    10
+  );
+  const minute = Number.parseInt(
+    parts.find((part) => part.type === "minute")?.value || "0",
+    10
+  );
+
+  return {
+    dayKey: `${year}-${month}-${day}`,
+    year: Number.parseInt(year, 10),
+    month: Number.parseInt(month, 10),
+    day: Number.parseInt(day, 10),
+    hour,
+    minute,
+  };
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = getTimeZoneParts(date, timeZone);
+  const asUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    0,
+    0
+  );
+  return asUtc - date.getTime();
+}
+
+function buildTimeZoneDate(
+  dayKey: string,
+  hour: number,
+  minute: number,
+  timeZone: string
+) {
+  const [year, month, day] = dayKey.split("-").map((value) => Number.parseInt(value, 10));
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+  const firstPass = new Date(utcGuess);
+  const firstOffset = getTimeZoneOffsetMs(firstPass, timeZone);
+  const corrected = new Date(utcGuess - firstOffset);
+  const correctedOffset = getTimeZoneOffsetMs(corrected, timeZone);
+
+  if (correctedOffset !== firstOffset) {
+    return new Date(utcGuess - correctedOffset);
+  }
+
+  return corrected;
+}
+
+function isSameIplDay(value: string | Date | null | undefined, dayKey: string) {
+  if (!value || !dayKey) {
+    return false;
+  }
+
+  return getTimeZoneParts(value, IPL_SCHEDULE_TIME_ZONE).dayKey === dayKey;
+}
+
+async function getAutoDetectedTodayScheduledEntries(): Promise<AutoScheduledSyncEntry[]> {
+  const todayKey = getTimeZoneParts(new Date(), IPL_SCHEDULE_TIME_ZONE).dayKey;
+  const detectedMatches = await detectCurrentIplMatches();
+  const todaysMatches = detectedMatches
+    .filter((match) => Boolean(String(match.id || "").trim()) && Boolean(match.dateTimeGMT))
+    .filter((match) => isSameIplDay(match.dateTimeGMT, todayKey))
+    .sort((left, right) => {
+      const leftTime = getTimeMs(left.dateTimeGMT);
+      const rightTime = getTimeMs(right.dateTimeGMT);
+      return leftTime - rightTime;
+    });
+
+  if (todaysMatches.length === 0) {
+    return [];
+  }
+
+  const firstMatchId = String(todaysMatches[0]?.id || "").trim();
+  const secondMatchId = String(todaysMatches[1]?.id || "").trim();
+  const scheduleSlots =
+    todaysMatches.length >= 2
+      ? [
+          { matchId: firstMatchId, hour: 8, minute: 30, label: "0830" },
+          { matchId: firstMatchId, hour: 9, minute: 30, label: "0930" },
+          { matchId: secondMatchId, hour: 12, minute: 0, label: "1200" },
+          { matchId: secondMatchId, hour: 14, minute: 30, label: "1430" },
+        ]
+      : [
+          { matchId: firstMatchId, hour: 12, minute: 0, label: "1200" },
+          { matchId: firstMatchId, hour: 14, minute: 30, label: "1430" },
+        ];
+
+  return scheduleSlots
+    .filter((slot) => Boolean(slot.matchId))
+    .map((slot) => ({
+      syncKey: `auto-scheduled-match:${todayKey}:${slot.matchId}:${slot.label}`,
+      matchId: slot.matchId,
+      triggerAt: buildTimeZoneDate(
+        todayKey,
+        slot.hour,
+        slot.minute,
+        IPL_SCHEDULE_TIME_ZONE
+      ).toISOString(),
+    }));
 }
 
 function isWithinWindow(candidateTs: number, anchorTs: number, windowMs: number) {
@@ -758,6 +915,11 @@ async function getAutoSyncRuntimeConfig() {
       ? envIntervalMs
       : stored.intervalMs;
   const enabled = envMatchId ? true : stored.enabled;
+  let scheduledEntries: AutoScheduledSyncEntry[] = [];
+
+  if (!envMatchId && enabled) {
+    scheduledEntries = await getAutoDetectedTodayScheduledEntries();
+  }
 
   return {
     matchId,
@@ -769,7 +931,135 @@ async function getAutoSyncRuntimeConfig() {
     afterOverMinutes,
     intervalMs,
     enabled,
+    scheduledEntries,
   };
+}
+
+async function maybeAutoSyncScheduledMatch(config: {
+  syncKey: string;
+  matchId: string;
+  triggerAt: string;
+  intervalMs: number;
+}) {
+  const gateKey = `scheduled:${config.syncKey}`;
+  const existingGate = getAutoSyncPassiveGate(gateKey);
+  if (existingGate) {
+    return existingGate.status;
+  }
+
+  const triggerTime = getTimeMs(config.triggerAt);
+  if (!Number.isFinite(triggerTime)) {
+    setAutoSyncPassiveGate(gateKey, "throttled", Date.now() + 5 * 60_000);
+    return "throttled" as const;
+  }
+
+  const now = Date.now();
+  if (now < triggerTime) {
+    setAutoSyncPassiveGate(gateKey, "throttled", triggerTime);
+    return "throttled" as const;
+  }
+
+  const runningPromise = autoSyncPromises.get(config.syncKey);
+  if (runningPromise) {
+    return "in-progress" as const;
+  }
+
+  const intervalMs = Math.max(config.intervalMs, MIN_AUTO_SYNC_INTERVAL_MS);
+  const state = await getMatchSyncState(config.syncKey);
+  const attemptCount = decodeScheduledAttemptCount(state?.lastCheckpoint);
+  const stateAge = state?.lastAttemptAt
+    ? now - new Date(state.lastAttemptAt).getTime()
+    : Number.POSITIVE_INFINITY;
+
+  if (state?.lastSuccessAt) {
+    setAutoSyncPassiveGate(
+      gateKey,
+      "already-synced",
+      triggerTime + FIXTURE_MATCH_WINDOW_MS
+    );
+    return "already-synced" as const;
+  }
+
+  if (attemptCount >= MAX_AUTO_SYNC_ATTEMPTS_PER_TRIGGER) {
+    setAutoSyncPassiveGate(
+      gateKey,
+      "error",
+      triggerTime + FIXTURE_MATCH_WINDOW_MS
+    );
+    return "error" as const;
+  }
+
+  const retryDelayMs =
+    state?.lastError && attemptCount < MAX_AUTO_SYNC_ATTEMPTS_PER_TRIGGER
+      ? AUTO_SYNC_RETRY_DELAY_MS
+      : intervalMs;
+
+  if (stateAge < retryDelayMs) {
+    setAutoSyncPassiveGate(
+      gateKey,
+      "throttled",
+      new Date(state?.lastAttemptAt || now).getTime() + retryDelayMs
+    );
+    return "throttled" as const;
+  }
+
+  await upsertMatchSyncState(config.syncKey, {
+    matchId: config.matchId,
+    lastAttemptAt: new Date(now).toISOString(),
+    lastSuccessAt: state?.lastSuccessAt ?? null,
+    lastError: null,
+    lastCheckpoint: attemptCount + 1,
+  });
+
+  const syncPromise = (async () => {
+    try {
+      await syncMatchPoints(config.matchId, {
+        name: "system:auto-sync",
+        bypassAdmin: true,
+      });
+
+      await upsertMatchSyncState(config.syncKey, {
+        matchId: config.matchId,
+        lastAttemptAt: new Date().toISOString(),
+        lastSuccessAt: new Date().toISOString(),
+        lastError: null,
+        lastCheckpoint: attemptCount + 1,
+      });
+
+      setAutoSyncPassiveGate(
+        gateKey,
+        "already-synced",
+        triggerTime + FIXTURE_MATCH_WINDOW_MS
+      );
+
+      return "synced" as const;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown auto-sync error";
+
+      await upsertMatchSyncState(config.syncKey, {
+        matchId: config.matchId,
+        lastAttemptAt: new Date().toISOString(),
+        lastSuccessAt: state?.lastSuccessAt ?? null,
+        lastError: message.slice(0, 300),
+        lastCheckpoint: attemptCount + 1,
+      });
+
+      const shouldRetry =
+        attemptCount + 1 < MAX_AUTO_SYNC_ATTEMPTS_PER_TRIGGER;
+      setAutoSyncPassiveGate(
+        gateKey,
+        shouldRetry ? "throttled" : "error",
+        now + (shouldRetry ? AUTO_SYNC_RETRY_DELAY_MS : FIXTURE_MATCH_WINDOW_MS)
+      );
+      return shouldRetry ? ("throttled" as const) : ("error" as const);
+    } finally {
+      autoSyncPromises.delete(config.syncKey);
+    }
+  })();
+
+  autoSyncPromises.set(config.syncKey, syncPromise);
+  return syncPromise;
 }
 
 async function maybeAutoSyncSingleConfiguredMatch(config: {
@@ -825,9 +1115,12 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
   const stateAge = state?.lastAttemptAt
     ? now - new Date(state.lastAttemptAt).getTime()
     : Number.POSITIVE_INFINITY;
-  const lastCheckpoint = Number(state?.lastCheckpoint || 0);
+  const triggerState = decodeConfiguredTriggerState(state?.lastCheckpoint);
+  const lastCompletedCheckpoint = triggerState.checkpoint;
+  const attemptCountForCheckpoint =
+    triggerState.checkpoint === checkpoint ? triggerState.attemptCount : 0;
 
-  if (state?.matchId === matchId && lastCheckpoint >= checkpoint) {
+  if (state?.matchId === matchId && lastCompletedCheckpoint >= checkpoint) {
     const status =
       checkpoint >= AUTO_SYNC_CHECKPOINT_MINUTES.length
         ? "already-synced"
@@ -840,11 +1133,31 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
     return status;
   }
 
-  if (state?.matchId === matchId && stateAge < intervalMs) {
+  if (
+    state?.matchId === matchId &&
+    attemptCountForCheckpoint >= MAX_AUTO_SYNC_ATTEMPTS_PER_TRIGGER
+  ) {
+    setAutoSyncPassiveGate(
+      gateKey,
+      "error",
+      getNextCheckpointAt(matchStartTime, checkpoint)
+    );
+    return "error" as const;
+  }
+
+  const retryDelayMs =
+    state?.matchId === matchId &&
+    triggerState.checkpoint === checkpoint &&
+    state?.lastError &&
+    attemptCountForCheckpoint < MAX_AUTO_SYNC_ATTEMPTS_PER_TRIGGER
+      ? AUTO_SYNC_RETRY_DELAY_MS
+      : intervalMs;
+
+  if (state?.matchId === matchId && stateAge < retryDelayMs) {
     setAutoSyncPassiveGate(
       gateKey,
       "throttled",
-      new Date(state.lastAttemptAt || now).getTime() + intervalMs
+      new Date(state.lastAttemptAt || now).getTime() + retryDelayMs
     );
     return "throttled" as const;
   }
@@ -854,7 +1167,10 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
     lastAttemptAt: new Date(now).toISOString(),
     lastSuccessAt: state?.lastSuccessAt ?? null,
     lastError: null,
-    lastCheckpoint,
+    lastCheckpoint: encodeConfiguredTriggerState(
+      checkpoint,
+      attemptCountForCheckpoint + 1
+    ),
   });
 
   const syncPromise = (async () => {
@@ -869,7 +1185,7 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
         lastAttemptAt: new Date().toISOString(),
         lastSuccessAt: new Date().toISOString(),
         lastError: null,
-        lastCheckpoint: checkpoint,
+        lastCheckpoint: encodeConfiguredTriggerState(checkpoint, 0),
       });
 
       setAutoSyncPassiveGate(
@@ -890,16 +1206,26 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
         lastAttemptAt: new Date().toISOString(),
         lastSuccessAt: state?.lastSuccessAt ?? null,
         lastError: message.slice(0, 300),
-        lastCheckpoint,
+        lastCheckpoint: encodeConfiguredTriggerState(
+          checkpoint,
+          attemptCountForCheckpoint + 1
+        ),
       });
 
+      const shouldRetry =
+        attemptCountForCheckpoint + 1 < MAX_AUTO_SYNC_ATTEMPTS_PER_TRIGGER;
       setAutoSyncPassiveGate(
         gateKey,
-        "throttled",
-        getNextCheckpointAt(matchStartTime, checkpoint)
+        shouldRetry ? "throttled" : "error",
+        shouldRetry
+          ? Math.min(
+              now + AUTO_SYNC_RETRY_DELAY_MS,
+              getNextCheckpointAt(matchStartTime, checkpoint)
+            )
+          : getNextCheckpointAt(matchStartTime, checkpoint)
       );
 
-      return "error" as const;
+      return shouldRetry ? ("throttled" as const) : ("error" as const);
     } finally {
       autoSyncPromises.delete(syncKey);
     }
@@ -1336,6 +1662,34 @@ export async function maybeAutoSyncConfiguredMatch(): Promise<AutoSyncStatus> {
 
   if (!config.enabled) {
     return "disabled";
+  }
+
+  if (config.scheduledEntries.length > 0) {
+    const results = await Promise.all(
+      config.scheduledEntries.map((entry) =>
+        maybeAutoSyncScheduledMatch({
+          syncKey: entry.syncKey,
+          matchId: entry.matchId,
+          triggerAt: entry.triggerAt,
+          intervalMs: config.intervalMs,
+        })
+      )
+    );
+
+    if (results.some((status) => status === "in-progress")) {
+      return "in-progress";
+    }
+    if (results.some((status) => status === "synced")) {
+      return "synced";
+    }
+    if (results.some((status) => status === "error")) {
+      return "error";
+    }
+    if (results.every((status) => status === "already-synced")) {
+      return "already-synced";
+    }
+
+    return "throttled";
   }
 
   if (config.entries.error) {

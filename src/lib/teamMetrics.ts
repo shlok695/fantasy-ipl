@@ -1,10 +1,14 @@
-export function getPlayerTotalPoints(player: any) {
-  return (player?.points || []).reduce((sum: number, entry: any) => {
+import type { DashboardPlayer, PlayerPointEntry } from "@/components/dashboard/types";
+
+type PlayerWithPoints = Pick<DashboardPlayer, "name" | "auctionPrice" | "points">;
+
+export function getPlayerTotalPoints(player: PlayerWithPoints) {
+  return (player.points || []).reduce((sum: number, entry: PlayerPointEntry) => {
     return sum + (entry?.points || 0);
   }, 0);
 }
 
-export function sortPlayersByPoints(players: any[] = []) {
+export function sortPlayersByPoints(players: PlayerWithPoints[] = []) {
   return [...players].sort((a, b) => {
     const pointDelta = getPlayerTotalPoints(b) - getPlayerTotalPoints(a);
 
@@ -21,6 +25,6 @@ export function sortPlayersByPoints(players: any[] = []) {
   });
 }
 
-export function getTopPlayers(players: any[] = [], limit = 11) {
+export function getTopPlayers(players: PlayerWithPoints[] = [], limit = 11) {
   return sortPlayersByPoints(players).slice(0, limit);
 }

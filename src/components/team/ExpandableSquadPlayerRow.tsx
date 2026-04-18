@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import Image from "next/image";
+import { useState, type ElementType, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import type { DashboardPlayer } from "@/components/dashboard/types";
 import {
@@ -24,7 +25,7 @@ export function ExpandableSquadPlayerRow({
   countryFlag,
   allowExpand = true,
 }: {
-  player: DashboardPlayer | any;
+  player: DashboardPlayer;
   rank: number;
   isStarter: boolean;
   captainId?: string | null;
@@ -56,7 +57,7 @@ export function ExpandableSquadPlayerRow({
       ? "h-14 w-14 rounded-2xl border border-white/15 bg-slate-950 object-cover shrink-0"
       : "w-12 h-12 rounded-xl object-cover border border-white/10 bg-black shrink-0";
 
-  const Element: any = allowExpand ? "button" : "div";
+  const Element: ElementType = allowExpand ? "button" : "div";
   const metaLine = (
     <>
       {player.role || "Player"}
@@ -72,7 +73,7 @@ export function ExpandableSquadPlayerRow({
         {...(allowExpand
           ? {
               type: "button",
-              onClick: () => setOpen((v: boolean) => !v),
+              onClick: () => setOpen((value) => !value),
               "aria-expanded": open,
             }
           : {})}
@@ -88,9 +89,11 @@ export function ExpandableSquadPlayerRow({
           <>
             <div className="flex items-start gap-3">
               <div className={rankRing}>{rank}</div>
-              <img
+              <Image
                 src={getPlayerImage(player.name, player.role)}
                 alt={player.name}
+                width={48}
+                height={48}
                 className={imgClass}
               />
               <div className="min-w-0 flex-1 pt-0.5">
@@ -140,9 +143,11 @@ export function ExpandableSquadPlayerRow({
           <>
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className={rankRing}>{rank}</div>
-              <img
+              <Image
                 src={getPlayerImage(player.name, player.role)}
                 alt={player.name}
+                width={56}
+                height={56}
                 className={imgClass}
               />
               <div className="min-w-0 flex-1">
