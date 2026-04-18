@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -7,17 +8,21 @@ import { Users, Trophy, Star, Activity, Crown, ShieldAlert } from "lucide-react"
 import { basePath } from "@/lib/basePath";
 import { MatchBreakdownPanel } from "@/components/team/MatchBreakdownPanel";
 import { ExpandableSquadPlayerRow } from "@/components/team/ExpandableSquadPlayerRow";
-import { getCountryFlag, getPlayerImage } from "@/lib/playerIndex";
+import { getCountryFlag } from "@/lib/playerIndex";
 import { TeamViewTabs, type TeamViewTabId } from "@/components/team/TeamViewTabs";
 import {
   getLatestAndPreviousTeamMatches,
   getTeamMatchDateLabel,
 } from "@/lib/teamHistory";
 import { getPlayerTotalPoints, getTopPlayers, sortPlayersByPoints } from "@/lib/teamMetrics";
+import type { DashboardPlayer, DashboardTeam } from "@/components/dashboard/types";
+import { getErrorMessage } from "@/lib/errorMessage";
+import { getSessionUserId } from "@/lib/sessionUser";
 
 export default function MyTeamPage() {
   const { data: session, status } = useSession();
-  const [team, setTeam] = useState<any>(null);
+  const userId = getSessionUserId(session);
+  const [team, setTeam] = useState<DashboardTeam | null>(null);
   const [loading, setLoading] = useState(true);
   const [captainId, setCaptainId] = useState("");
   const [viceCaptainId, setViceCaptainId] = useState("");
@@ -30,7 +35,7 @@ export default function MyTeamPage() {
       return;
     }
 
-    if (!session?.user) {
+    if (!userId) {
       setLoading(false);
       return;
     }
@@ -43,8 +48,8 @@ export default function MyTeamPage() {
         }
 
         const data = await res.json();
-        const teams = Array.isArray(data) ? data : [];
-        const myTeam = teams.find((entry: any) => entry.id === (session.user as any).id) || null;
+        const teams: DashboardTeam[] = Array.isArray(data) ? data : [];
+        const myTeam = teams.find((entry) => entry.id === userId) || null;
         setTeam(myTeam);
         if (myTeam) {
           setCaptainId((current) => current || myTeam.captainId || "");
@@ -60,7 +65,7 @@ export default function MyTeamPage() {
     fetchTeam();
     const interval = setInterval(fetchTeam, 10000);
     return () => clearInterval(interval);
-  }, [session?.user, status]);
+  }, [status, userId]);
 
   if (loading || status === "loading") {
     return (
@@ -97,8 +102,8 @@ export default function MyTeamPage() {
   const totalSquadPoints = sortedPlayers.reduce((sum, player) => sum + getPlayerTotalPoints(player), 0);
   const leadershipLocked = Boolean(team.captainId || team.viceCaptainId);
   const { latestMatch, previousMatch, matches } = getLatestAndPreviousTeamMatches(team);
-  const captainPlayer = sortedPlayers.find((p: any) => p.id === team.captainId);
-  const viceCaptainPlayer = sortedPlayers.find((p: any) => p.id === team.viceCaptainId);
+  const captainPlayer = sortedPlayers.find((player) => player.id === team.captainId);
+  const viceCaptainPlayer = sortedPlayers.find((player) => player.id === team.viceCaptainId);
 
   const handleLeadershipSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,12 +126,13 @@ export default function MyTeamPage() {
       await fetch(`${basePath}/api/teams`, { cache: "no-store" })
         .then((response) => response.json())
         .then((data) => {
-          const teams = Array.isArray(data) ? data : [];
-          const myTeam = teams.find((entry: any) => entry.id === (session.user as any).id) || null;
+          const userId = getSessionUserId(session);
+          const teams: DashboardTeam[] = Array.isArray(data) ? data : [];
+          const myTeam = userId ? teams.find((entry) => entry.id === userId) || null : null;
           setTeam(myTeam);
         });
-    } catch (error: any) {
-      setLeadershipMessage({ type: "error", text: error.message });
+    } catch (error: unknown) {
+      setLeadershipMessage({ type: "error", text: getErrorMessage(error, "Failed to save captain selections") });
     } finally {
       setLeadershipLoading(false);
     }
@@ -231,7 +237,7 @@ export default function MyTeamPage() {
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-60"
               >
                 <option value="">Select captain</option>
-                {sortedPlayers.map((player: any) => (
+                {sortedPlayers.map((player) => (
                   <option key={player.id} value={player.id}>
                     {player.name} · IPL {player.iplTeam || "—"} · {getPlayerTotalPoints(player)} pts
                   </option>
@@ -247,7 +253,7 @@ export default function MyTeamPage() {
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
               >
                 <option value="">Select vice-captain</option>
-                {sortedPlayers.map((player: any) => (
+                {sortedPlayers.map((player) => (
                   <option key={player.id} value={player.id}>
                     {player.name} · IPL {player.iplTeam || "—"} · {getPlayerTotalPoints(player)} pts
                   </option>
@@ -302,7 +308,7 @@ export default function MyTeamPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {top11.map((player: any, index: number) => (
+          {top11.map((player: DashboardPlayer, index: number) => (
             <ExpandableSquadPlayerRow
               key={player.id}
               player={player}
@@ -311,16 +317,18 @@ export default function MyTeamPage() {
               captainId={team.captainId}
               viceCaptainId={team.viceCaptainId}
               variant="franchise"
-              countryFlag={
-                getCountryFlag(player.country) ? (
-                  <img
-                    src={getCountryFlag(player.country)!}
-                    alt={player.country || "India"}
-                    className="w-4 h-3 rounded object-cover shadow shrink-0"
-                  />
-                ) : undefined
-              }
-            />
+                countryFlag={
+                  getCountryFlag(player.country) ? (
+                    <Image
+                      src={getCountryFlag(player.country)!}
+                      alt={player.country || "India"}
+                      width={16}
+                      height={12}
+                      className="w-4 h-3 rounded object-cover shadow shrink-0"
+                    />
+                  ) : undefined
+                }
+              />
           ))}
         </div>
       </div>
@@ -331,7 +339,7 @@ export default function MyTeamPage() {
             <Users className="text-indigo-400" /> Full Squad
           </h2>
           <div className="space-y-3">
-            {sortedPlayers.map((player: any, index: number) => (
+            {sortedPlayers.map((player: DashboardPlayer, index: number) => (
               <ExpandableSquadPlayerRow
                 key={player.id}
                 player={player}
@@ -342,9 +350,11 @@ export default function MyTeamPage() {
                 variant="franchise"
                 countryFlag={
                   getCountryFlag(player.country) ? (
-                    <img
+                    <Image
                       src={getCountryFlag(player.country)!}
                       alt={player.country || "India"}
+                      width={16}
+                      height={12}
                       className="w-4 h-3 rounded object-cover shadow shrink-0"
                     />
                   ) : undefined

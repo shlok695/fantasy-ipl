@@ -64,7 +64,7 @@ export async function pushNextPlayer(explicitSet?: { type: string, role: string 
   }
 
   // 2. Determine target Set (either explicit or globally active)
-  let targetSet = explicitSet;
+  const targetSet = explicitSet;
   let nextPlayer = null;
 
   // 3. Try to pull a random player from the locked Target Set if provided

@@ -1,18 +1,20 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getErrorMessage } from '@/lib/errorMessage';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getSessionUserId } from '@/lib/sessionUser';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
+  const userId = getSessionUserId(session);
 
-  if (!session || !session.user || !(session.user as any).id) {
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     const { captainId, viceCaptainId } = await request.json();
-    const userId = (session.user as any).id;
 
     if (!captainId || !viceCaptainId) {
       return NextResponse.json({ error: "Captain and vice-captain are required" }, { status: 400 });
@@ -64,7 +66,7 @@ export async function POST(request: Request) {
       captain: updatedUser.captain,
       viceCaptain: updatedUser.viceCaptain
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

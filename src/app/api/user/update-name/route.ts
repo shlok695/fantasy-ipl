@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getErrorMessage } from '@/lib/errorMessage';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getSessionUserId } from '@/lib/sessionUser';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
+  const userId = getSessionUserId(session);
   
-  if (!session || !session.user || !(session.user as any).id) {
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -22,19 +25,17 @@ export async function POST(request: Request) {
       where: { name: newName.trim() }
     });
 
-    if (existing && session.user && existing.id !== (session.user as any).id) {
+    if (existing && existing.id !== userId) {
       return NextResponse.json({ error: "Name already taken" }, { status: 400 });
     }
 
-    if (session.user) {
-      await prisma.user.update({
-        where: { id: (session.user as any).id },
-        data: { name: newName.trim() }
-      });
-    }
+    await prisma.user.update({
+      where: { id: userId },
+      data: { name: newName.trim() }
+    });
 
     return NextResponse.json({ success: true, name: newName.trim() });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

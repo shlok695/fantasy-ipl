@@ -85,7 +85,7 @@ export default function LoginPage() {
           </button>
 
           <p className="text-center text-gray-400 text-sm mt-4">
-            Don't have a team yet? <Link href="/signup" className="text-indigo-400 font-bold hover:underline">
+            Don&apos;t have a team yet? <Link href="/signup" className="text-indigo-400 font-bold hover:underline">
               Create one
             </Link>
           </p>

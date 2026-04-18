@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type AggregatedLeader = {
   id: string;
@@ -20,10 +22,6 @@ type AggregatedLeader = {
   matches: number;
   sr: number;
 };
-
-function isCompletedMatch(status?: string | null) {
-  return typeof status === "string" && /\bwon\b/i.test(status);
-}
 
 function pickLeader(
   players: AggregatedLeader[],
@@ -70,10 +68,6 @@ export async function GET() {
     >();
 
     for (const row of rows) {
-      if (!isCompletedMatch(row.match?.status ?? null)) {
-        continue;
-      }
-
       const playerId = row.player.id;
       const existing = totals.get(playerId);
       const runs = row.runs || 0;
@@ -125,12 +119,19 @@ export async function GET() {
     const orangeCapHolder = pickLeader(players, "totalRuns");
     const purpleCapHolder = pickLeader(players, "totalWickets");
 
-    return NextResponse.json({
-      orangeCapHolder,
-      purpleCapHolder,
-      matchFilter: "status includes 'won'",
-    });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        orangeCapHolder,
+        purpleCapHolder,
+        matchFilter: "all synced playerPoints rows",
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      }
+    );
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }
