@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { basePath } from "@/lib/basePath";
 import { deriveLeagueData } from "@/lib/leagueData";
@@ -12,16 +12,28 @@ type LeagueLeadersResponse = {
   purpleCapHolder?: AggregatedPlayer | null;
 };
 
-export function useLeagueData(intervalMs = 5000) {
-  const { data: session, status } = useSession();
+type LeagueVersionResponse = {
+  version?: string | null;
+};
+
+export function useLeagueData(intervalMs = 2000) {
+  const { data: session } = useSession();
   const [teams, setTeams] = useState<DashboardTeam[]>([]);
   const [leaders, setLeaders] = useState<LeagueLeadersResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const latestVersionRef = useRef<string | null>(null);
+  const snapshotInFlightRef = useRef(false);
+  const versionInFlightRef = useRef(false);
 
   useEffect(() => {
     let active = true;
 
-    const fetchTeams = async () => {
+    const fetchLeagueSnapshot = async ({ keepLoading = false }: { keepLoading?: boolean } = {}) => {
+      if (snapshotInFlightRef.current) {
+        return;
+      }
+
+      snapshotInFlightRef.current = true;
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), 10000);
 
@@ -37,10 +49,12 @@ export function useLeagueData(intervalMs = 5000) {
           }),
         ]);
 
-        const data =
-          teamsRes.status === "fulfilled" ? await teamsRes.value.json() : [];
-        const leadersData =
-          leadersRes.status === "fulfilled" ? await leadersRes.value.json() : null;
+        const data = teamsRes.status === "fulfilled" && teamsRes.value.ok
+          ? await teamsRes.value.json()
+          : [];
+        const leadersData = leadersRes.status === "fulfilled" && leadersRes.value.ok
+          ? await leadersRes.value.json()
+          : null;
 
         if (active) {
           setTeams(Array.isArray(data) ? data : []);
@@ -59,18 +73,78 @@ export function useLeagueData(intervalMs = 5000) {
         console.error(error);
       } finally {
         window.clearTimeout(timeoutId);
+        snapshotInFlightRef.current = false;
         if (active) {
-          setLoading(false);
+          if (!keepLoading) {
+            setLoading(false);
+          }
         }
       }
     };
 
-    fetchTeams();
-    const interval = window.setInterval(fetchTeams, intervalMs);
+    const checkLeagueVersion = async () => {
+      if (versionInFlightRef.current) {
+        return;
+      }
+
+      versionInFlightRef.current = true;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const response = await fetch(`${basePath}/api/league-version`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as LeagueVersionResponse;
+        const nextVersion = typeof data.version === "string" ? data.version : null;
+
+        if (!nextVersion) {
+          return;
+        }
+
+        if (latestVersionRef.current === null) {
+          latestVersionRef.current = nextVersion;
+          return;
+        }
+
+        if (latestVersionRef.current !== nextVersion) {
+          latestVersionRef.current = nextVersion;
+          await fetchLeagueSnapshot();
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        window.clearTimeout(timeoutId);
+        versionInFlightRef.current = false;
+      }
+    };
+
+    const bootstrap = async () => {
+      await fetchLeagueSnapshot({ keepLoading: true });
+      await checkLeagueVersion();
+
+      if (active) {
+        setLoading(false);
+      }
+    };
+
+    void bootstrap();
+
+    const versionInterval = window.setInterval(checkLeagueVersion, intervalMs);
+    const fallbackInterval = window.setInterval(() => {
+      void fetchLeagueSnapshot();
+    }, Math.max(intervalMs * 6, 15000));
 
     return () => {
       active = false;
-      window.clearInterval(interval);
+      window.clearInterval(versionInterval);
+      window.clearInterval(fallbackInterval);
     };
   }, [intervalMs]);
 

@@ -1,8 +1,9 @@
 "use client";
 import { signIn, signOut } from "next-auth/react";
+import type { Session } from "next-auth";
 import { LogOut, LogIn } from "lucide-react";
 
-export function AuthButton({ session }: { session: any }) {
+export function AuthButton({ session }: { session: Session | null }) {
   if (session) {
     return (
       <div className="flex items-center gap-4">

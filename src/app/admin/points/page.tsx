@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Shield, Plus, TrendingUp, Zap, RefreshCw, CheckCircle, AlertCircle, Search, Trophy, PencilLine, Users, ScrollText, Award } from 'lucide-react';
 import { basePath } from '@/lib/basePath';
 import { MatchBreakdownPanel } from '@/components/team/MatchBreakdownPanel';
@@ -104,24 +104,24 @@ export default function PointsAdmin() {
   const IPL_TEAMS = ['CSK', 'DC', 'GT', 'KKR', 'LSG', 'MI', 'PBKS', 'RR', 'RCB', 'SRH'];
   const seasonAwardsApplied = auditLogs.some((log) => log.action === 'SEASON_AWARDS_APPLIED');
 
-  const fetchPlayers = async () => {
+  const fetchPlayers = useCallback(async () => {
     try {
       const query = search.trim() ? `?q=${encodeURIComponent(search.trim())}` : '';
       const res = await fetch(`${basePath}/api/players${query}`, { cache: 'no-store' });
       const data = await res.json();
       setPlayers(data);
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
     }
-  };
+  }, [search]);
 
   const fetchTeams = async () => {
     try {
       const res = await fetch(`${basePath}/api/teams`, { cache: 'no-store' });
       const data = await res.json();
       setTeams(data);
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -130,8 +130,8 @@ export default function PointsAdmin() {
       const res = await fetch(`${basePath}/api/admin/audit`, { cache: 'no-store' });
       const data = await res.json();
       setAuditLogs(data.logs || []);
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -170,8 +170,8 @@ export default function PointsAdmin() {
       } else {
         setDetectionError(data.error || 'Failed to fetch live sync config');
       }
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       setDetectionError('System error connection to sync API');
     } finally {
       if (!silent) {
@@ -181,8 +181,8 @@ export default function PointsAdmin() {
   };
 
   useEffect(() => {
-    fetchPlayers();
-  }, [search]);
+    void fetchPlayers();
+  }, [fetchPlayers]);
 
   useEffect(() => {
     fetchTeams();
@@ -352,7 +352,7 @@ export default function PointsAdmin() {
       await fetchPlayers();
       await fetchTeams();
       await fetchAuditLogs();
-    } catch (e) {
+    } catch {
       alert("Failed to update points");
     } finally {
       setLoading(false);
@@ -383,7 +383,7 @@ export default function PointsAdmin() {
       alert(`Updated bonus points for ${selectedTeam.name}`);
       await fetchTeams();
       await fetchAuditLogs();
-    } catch (e) {
+    } catch {
       alert("Failed to update team points");
     } finally {
       setTeamLoading(false);
@@ -439,7 +439,7 @@ export default function PointsAdmin() {
       alert(`${winningIplTeam} win bonus applied`);
       await fetchTeams();
       await fetchAuditLogs();
-    } catch (e) {
+    } catch {
       alert('Failed to award partner win bonus');
     } finally {
       setTeamLoading(false);
@@ -472,7 +472,7 @@ export default function PointsAdmin() {
       alert(`Season awards applied.\n\n${summary}`);
       await fetchTeams();
       await fetchAuditLogs();
-    } catch (e) {
+    } catch {
       alert('Failed to apply season awards');
     } finally {
       setSeasonAwardsLoading(false);
@@ -853,6 +853,7 @@ export default function PointsAdmin() {
                     : 'bg-black/20 border-white/5 hover:border-indigo-500/30 hover:bg-white/5'
                 }`}
               >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(player.name)}&background=random&color=fff&size=128&bold=true`} alt={player.name} className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl border border-white/10 shrink-0 object-cover" />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-sm sm:text-base text-white truncate">{player.name}</p>
@@ -874,6 +875,7 @@ export default function PointsAdmin() {
             {selectedPlayer ? (
               <form onSubmit={handleUpdate} className="space-y-6">
                 <div className="flex items-center gap-4 border-b border-white/10 pb-4 sm:pb-6">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(selectedPlayer.name)}&background=random&color=fff&size=256&bold=true`} alt={selectedPlayer.name} className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white/10 shadow-xl" />
                   <div>
                     <h3 className="text-xl sm:text-2xl font-black text-emerald-400 mb-0.5">{selectedPlayer.name}</h3>

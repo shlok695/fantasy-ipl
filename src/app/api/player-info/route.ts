@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import playerTeams from '../../../../data_dump/player_teams.json';
+import { getErrorMessage } from '@/lib/errorMessage';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
       if (dbKey) {
         iplTeam = playerTeams[dbKey as keyof typeof playerTeams];
       }
-    } catch(e) {}
+    } catch {}
 
     if (!iplTeam) {
       for (const t of knownTeams) {
@@ -79,11 +80,11 @@ export async function GET(req: Request) {
         if (playerTeams[name as keyof typeof playerTeams]) {
           iplTeam = playerTeams[name as keyof typeof playerTeams];
         }
-      } catch(e) {}
+      } catch {}
     }
 
     return NextResponse.json({ image, iplTeam });
-  } catch(e: any) {
-    return NextResponse.json({ error: String(e), trace: e?.stack });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) });
   }
 }

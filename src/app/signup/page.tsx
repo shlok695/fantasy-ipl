@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { UserPlus, Lock } from "lucide-react";
 import Link from "next/link";
 import { basePath } from "@/lib/basePath";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -36,8 +37,8 @@ export default function SignupPage() {
       }
 
       router.push('/login?registered=true');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to create franchise"));
       setLoading(false);
     }
   };
@@ -98,7 +99,7 @@ export default function SignupPage() {
           </button>
 
           <p className="text-center text-gray-400 text-sm mt-4">
-            Already have a team? 
+            Already have a team?{" "}
             <Link href="/login" className="text-indigo-400 font-bold hover:underline">
               Log in instead
             </Link>

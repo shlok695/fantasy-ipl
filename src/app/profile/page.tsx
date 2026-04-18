@@ -6,11 +6,15 @@ import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { KeyRound, PencilLine, ShieldCheck } from "lucide-react";
 import { basePath } from "@/lib/basePath";
+import type { DashboardTeam } from "@/components/dashboard/types";
+import { getErrorMessage } from "@/lib/errorMessage";
+import { getSessionUserId } from "@/lib/sessionUser";
 
 export default function ProfilePage() {
   const router = useRouter();
   const { data: session, status, update } = useSession();
-  const [team, setTeam] = useState<any>(null);
+  const userId = getSessionUserId(session);
+  const [team, setTeam] = useState<DashboardTeam | null>(null);
   const [newName, setNewName] = useState("");
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -27,7 +31,7 @@ export default function ProfilePage() {
   }, [session?.user?.name]);
 
   useEffect(() => {
-    if (!session?.user) {
+    if (!userId) {
       return;
     }
 
@@ -39,8 +43,8 @@ export default function ProfilePage() {
         }
 
         const data = await res.json();
-        const teams = Array.isArray(data) ? data : [];
-        const myTeam = teams.find((entry: any) => entry.id === (session.user as any).id) || null;
+        const teams: DashboardTeam[] = Array.isArray(data) ? data : [];
+        const myTeam = teams.find((entry) => entry.id === userId) || null;
         setTeam(myTeam);
       } catch (error) {
         console.error(error);
@@ -48,7 +52,7 @@ export default function ProfilePage() {
     };
 
     fetchTeam();
-  }, [session?.user]);
+  }, [userId]);
 
   if (status === "loading") {
     return (
@@ -90,8 +94,8 @@ export default function ProfilePage() {
       await update({ name: data.name });
       setNameMessage({ type: "success", text: "Franchise name updated." });
       router.refresh();
-    } catch (error: any) {
-      setNameMessage({ type: "error", text: error.message });
+    } catch (error: unknown) {
+      setNameMessage({ type: "error", text: getErrorMessage(error, "Failed to update franchise name") });
     } finally {
       setNameLoading(false);
     }
@@ -118,8 +122,8 @@ export default function ProfilePage() {
       setNewPassword("");
       setConfirmPassword("");
       setPasswordMessage({ type: "success", text: "Password updated. You can keep using the current session." });
-    } catch (error: any) {
-      setPasswordMessage({ type: "error", text: error.message });
+    } catch (error: unknown) {
+      setPasswordMessage({ type: "error", text: getErrorMessage(error, "Failed to reset password") });
     } finally {
       setPasswordLoading(false);
     }
