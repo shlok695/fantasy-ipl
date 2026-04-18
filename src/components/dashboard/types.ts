@@ -34,6 +34,7 @@ export interface DashboardPlayer {
   id: string;
   name: string;
   role?: string | null;
+  type?: string | null;
   iplTeam?: string | null;
   auctionPrice?: number | null;
   user?: {
