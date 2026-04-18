@@ -8,7 +8,7 @@ export function getPlayerTotalPoints(player: PlayerWithPoints) {
   }, 0);
 }
 
-export function sortPlayersByPoints(players: PlayerWithPoints[] = []) {
+export function sortPlayersByPoints<T extends PlayerWithPoints>(players: T[] = []) {
   return [...players].sort((a, b) => {
     const pointDelta = getPlayerTotalPoints(b) - getPlayerTotalPoints(a);
 
@@ -25,6 +25,6 @@ export function sortPlayersByPoints(players: PlayerWithPoints[] = []) {
   });
 }
 
-export function getTopPlayers(players: PlayerWithPoints[] = [], limit = 11) {
+export function getTopPlayers<T extends PlayerWithPoints>(players: T[] = [], limit = 11) {
   return sortPlayersByPoints(players).slice(0, limit);
 }
