@@ -1,62 +1,169 @@
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
-const http = require('http');
+const fs = require("fs");
+const path = require("path");
 
-// Load .env manually
 function loadEnv() {
-  const envPath = path.resolve(__dirname, '../.env');
-  if (fs.existsSync(envPath)) {
-    const envContent = fs.readFileSync(envPath, 'utf8');
-    envContent.split('\n').forEach(line => {
-      const parts = line.split('=');
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        const value = parts.slice(1).join('=').trim().replace(/^"(.*)"$/, '$1');
-        process.env[key] = value;
-      }
-    });
+  const envPath = path.resolve(__dirname, "../.env");
+  if (!fs.existsSync(envPath)) {
+    return;
   }
+
+  const envContent = fs.readFileSync(envPath, "utf8");
+  envContent.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      return;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex === -1) {
+      return;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const value = trimmed
+      .slice(separatorIndex + 1)
+      .trim()
+      .replace(/^"(.*)"$/, "$1");
+
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  });
 }
 
 loadEnv();
 
 const SECRET = process.env.CRON_SECRET;
-const BASE_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000/ipl';
-// If NEXTAUTH_URL is public (contains svps...ts.net), use localhost for the worker to bypass proxy
-const LOCAL_BASE_URL = BASE_URL.includes('ts.net') ? 'http://127.0.0.1:3000/ipl' : BASE_URL;
-const INTERVAL_MS = Number(process.env.AUTO_SYNC_WORKER_INTERVAL_MS || 30 * 60 * 1000); // default 30 minutes
+const BASE_URL = process.env.INTERNAL_APP_URL || "http://app:3000";
+const BASE_PATH = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH);
+const INTERVAL_MS = Number(
+  process.env.AUTO_SYNC_WORKER_INTERVAL_MS || 30 * 60 * 1000
+);
+const RETRY_MS = Number(
+  process.env.AUTO_SYNC_WORKER_RETRY_MS || 60 * 1000
+);
 
 if (!SECRET) {
-  console.error("ERROR: CRON_SECRET not found in .env");
+  console.error("[Worker] CRON_SECRET is required");
   process.exit(1);
 }
 
-console.log(`[Worker] Started. Target: ${BASE_URL}`);
-console.log(`[Worker] Sync interval: ${INTERVAL_MS / 60000} minutes`);
+function normalizeBasePath(value) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "/") {
+    return "";
+  }
 
-async function runSync() {
-  const url = `${LOCAL_BASE_URL}/api/sync-worker?secret=${SECRET}`;
-  console.log(`[${new Date().toISOString()}] Attempting sync at ${LOCAL_BASE_URL}...`);
+  return raw.startsWith("/") ? raw.replace(/\/+$/, "") : `/${raw.replace(/\/+$/, "")}`;
+}
 
-  const client = url.startsWith('https') ? https : http;
+function buildCandidateUrls() {
+  const paths = [`/api/sync-worker`, `${BASE_PATH}/api/sync-worker`].filter(
+    (value, index, items) => value && items.indexOf(value) === index
+  );
 
-  client.get(url, (res) => {
-    let data = '';
-    res.on('data', chunk => { data += chunk; });
-    res.on('end', () => {
-      try {
-        const json = JSON.parse(data);
-        console.log(`[${new Date().toISOString()}] Response:`, json.status || json.error || 'Unknown');
-      } catch (e) {
-        console.error(`[${new Date().toISOString()}] Failed to parse response:`, data.slice(0, 100));
-      }
-    });
-  }).on('error', (err) => {
-    console.error(`[${new Date().toISOString()}] Request failed:`, err.message);
+  return paths.map((pathname) => {
+    const url = new URL(pathname, BASE_URL);
+    url.searchParams.set("secret", SECRET);
+    return url.toString();
   });
 }
 
-// Run immediately, then interval
-runSync();
-setInterval(runSync, INTERVAL_MS);
+async function runSync() {
+  const candidateUrls = buildCandidateUrls();
+  const startedAt = new Date().toISOString();
+
+  for (const url of candidateUrls) {
+    try {
+      console.log({
+        event: "sync_worker_request_started",
+        source: "worker",
+        url,
+        actualTime: startedAt,
+      });
+
+      const response = await fetch(url, { method: "GET" });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error({
+          event: "sync_worker_request_failed",
+          source: "worker",
+          url,
+          status: response.status,
+          body: data,
+          actualTime: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      const status = data?.status || "unknown";
+      const shouldRetrySoon =
+        status === "in-progress" ||
+        status === "error";
+
+      console.log({
+        event: "sync_worker_request_completed",
+        source: "worker",
+        url,
+        status,
+        nextMode: shouldRetrySoon ? "retry" : "interval",
+        actualTime: new Date().toISOString(),
+      });
+      return shouldRetrySoon ? "retry" : "interval";
+    } catch (error) {
+      console.error({
+        event: "sync_worker_request_error",
+        source: "worker",
+        url,
+        error: error instanceof Error ? error.message : String(error),
+        actualTime: new Date().toISOString(),
+      });
+    }
+  }
+
+  console.error({
+    event: "sync_worker_all_targets_failed",
+    source: "worker",
+    baseUrl: BASE_URL,
+    basePath: BASE_PATH || null,
+    actualTime: new Date().toISOString(),
+  });
+
+  return "retry";
+}
+
+async function startWorkerLoop() {
+  let delayMs = 0;
+
+  while (true) {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    const nextMode = await runSync();
+    delayMs = nextMode === "interval" ? INTERVAL_MS : RETRY_MS;
+
+    console.log({
+      event:
+        nextMode === "interval"
+          ? "sync_worker_next_run_scheduled"
+          : "sync_worker_catchup_retry_scheduled",
+      source: "worker",
+      nextDelayMs: delayMs,
+      actualTime: new Date().toISOString(),
+    });
+  }
+}
+
+console.log({
+  event: "sync_worker_started",
+  source: "worker",
+  baseUrl: BASE_URL,
+  basePath: BASE_PATH || null,
+  intervalMinutes: INTERVAL_MS / 60000,
+  retrySeconds: RETRY_MS / 1000,
+  actualTime: new Date().toISOString(),
+});
+
+void startWorkerLoop();

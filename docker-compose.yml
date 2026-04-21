@@ -1,5 +1,5 @@
 services:
-  fantasy-ipl:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
@@ -15,6 +15,22 @@ services:
       HOSTNAME: 0.0.0.0
       NEXTAUTH_URL: http://localhost:3000/ipl
       NEXT_PUBLIC_BASE_PATH: /ipl
+      INTERNAL_APP_URL: http://app:3000
     volumes:
       - ./prisma:/app/prisma
+    restart: unless-stopped
+
+  sync-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fantasy-ipl:latest
+    command: ["node", "scripts/worker.js"]
+    env_file:
+      - .env
+    environment:
+      INTERNAL_APP_URL: http://app:3000
+      NEXT_PUBLIC_BASE_PATH: /ipl
+    depends_on:
+      - app
     restart: unless-stopped
