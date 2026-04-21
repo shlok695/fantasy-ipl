@@ -1,8 +1,12 @@
 import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 
-export async function ensureAdminAuditTable() {
-  await prisma.$executeRawUnsafe(`
+type AuditDb = {
+  $executeRawUnsafe: (query: string, ...values: any[]) => PromiseLike<unknown>;
+};
+
+export async function ensureAdminAuditTable(db: AuditDb = prisma) {
+  await db.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "AdminAuditLog" (
       "id" TEXT PRIMARY KEY,
       "actor" TEXT NOT NULL,
@@ -16,23 +20,33 @@ export async function ensureAdminAuditTable() {
 const DEFAULT_AUDIT_DETAILS_MAX = 180;
 const EXTENDED_AUDIT_DETAILS_MAX = 900;
 
-export async function recordAdminAudit(
+export async function recordAdminAuditWithDb(
+  db: AuditDb,
   actor: string,
   action: string,
   details: string,
   options?: { maxDetailsLength?: number }
 ) {
-  await ensureAdminAuditTable();
+  await ensureAdminAuditTable(db);
   const maxLen = options?.maxDetailsLength ?? DEFAULT_AUDIT_DETAILS_MAX;
   const trimmedDetails = details.trim().slice(0, maxLen);
 
-  await prisma.$executeRawUnsafe(
+  await db.$executeRawUnsafe(
     `INSERT INTO "AdminAuditLog" ("id", "actor", "action", "details") VALUES (?, ?, ?, ?)`,
     randomUUID(),
     actor,
     action.trim().slice(0, 60),
     trimmedDetails
   );
+}
+
+export async function recordAdminAudit(
+  actor: string,
+  action: string,
+  details: string,
+  options?: { maxDetailsLength?: number }
+) {
+  await recordAdminAuditWithDb(prisma, actor, action, details, options);
 }
 
 export async function recordAdminAuditExtended(actor: string, action: string, details: string) {

@@ -6,19 +6,53 @@ function toBoolean(value: unknown) {
   return false;
 }
 
-export async function getLiveRoomVisible() {
-  const rows = await prisma.$queryRawUnsafe<Array<{ liveRoomVisible: unknown }>>(
-    `SELECT liveRoomVisible FROM "AuctionState" WHERE id = 'global' LIMIT 1`
-  );
+function hasDatabaseUrl() {
+  return Boolean(process.env.DATABASE_URL?.trim());
+}
 
-  if (!rows.length) {
+function isMissingDatabaseUrlError(error: unknown) {
+  return (
+    error instanceof Error &&
+    error.message.includes('Environment variable not found: DATABASE_URL')
+  );
+}
+
+function isMissingAuctionStateTableError(error: unknown) {
+  return (
+    error instanceof Error &&
+    error.message.includes('no such table: AuctionState')
+  );
+}
+
+export async function getLiveRoomVisible() {
+  if (!hasDatabaseUrl()) {
     return false;
   }
 
-  return toBoolean(rows[0].liveRoomVisible);
+  try {
+    const rows = await prisma.$queryRawUnsafe<Array<{ liveRoomVisible: unknown }>>(
+      `SELECT liveRoomVisible FROM "AuctionState" WHERE id = 'global' LIMIT 1`
+    );
+
+    if (!rows.length) {
+      return false;
+    }
+
+    return toBoolean(rows[0].liveRoomVisible);
+  } catch (error) {
+    if (isMissingDatabaseUrlError(error) || isMissingAuctionStateTableError(error)) {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 export async function setLiveRoomVisible(visible: boolean) {
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is not configured.');
+  }
+
   await prisma.$executeRawUnsafe(
     `INSERT OR IGNORE INTO "AuctionState" ("id", "highestBid", "status", "liveRoomVisible") VALUES ('global', 0, 'WAITING', ${visible ? 1 : 0})`
   );
