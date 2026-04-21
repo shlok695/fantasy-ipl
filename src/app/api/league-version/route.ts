@@ -18,7 +18,7 @@ function toIso(value: Date | string | null | undefined) {
 export async function GET() {
   try {
     try {
-      await maybeAutoSyncConfiguredMatch();
+      await maybeAutoSyncConfiguredMatch({ source: "league-version" });
     } catch (syncError) {
       console.error("Auto-sync skipped after failure in /api/league-version", syncError);
     }

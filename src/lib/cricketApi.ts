@@ -8,6 +8,8 @@ const DEFAULT_RAPIDAPI_HOST = "cricbuzz-cricket.p.rapidapi.com";
 const IPL_DETECTION_CACHE_MS = 10 * 60_000;
 const SECOND_FIXTURE_LOOKAHEAD_MS = 2 * 60 * 60_000;
 const T20_MATCH_WINDOW_MS = 5 * 60 * 60_000;
+const IPL_SCHEDULE_TIME_ZONE =
+  (process.env.IPL_SCHEDULE_TIME_ZONE || "").trim() || "America/New_York";
 
 type CachedDetection<T> = {
   value: T;
@@ -1252,7 +1254,7 @@ function isRelevantIplMatchCandidate(match: CurrentMatchSummary, nowMs: number) 
 
 function getDetectionDayKey(timestamp: number) {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
+    timeZone: IPL_SCHEDULE_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

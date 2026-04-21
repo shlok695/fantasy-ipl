@@ -12,7 +12,15 @@ export async function GET(request: Request) {
   }
 
   try {
-    const status = await maybeAutoSyncConfiguredMatch();
+    console.log({
+      event: "match_sync_entrypoint_called",
+      source: "worker",
+      matchId: null,
+      scheduledTime: null,
+      actualTime: new Date().toISOString(),
+    });
+
+    const status = await maybeAutoSyncConfiguredMatch({ source: "worker" });
     return NextResponse.json({ success: true, status });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";

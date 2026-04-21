@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { syncMatchPoints } from "@/lib/matchSync";
+import { startMatchSyncRun } from "@/lib/matchSync";
 
 export async function POST(request: Request) {
   try {
@@ -15,9 +15,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Match ID is required" }, { status: 400 });
     }
 
-    const result = await syncMatchPoints(String(matchId), {
-      name: session.user!.name || "admin",
+    console.log({
+      event: "match_sync_entrypoint_called",
+      source: "manual",
+      matchId: String(matchId),
+      scheduledTime: null,
+      actualTime: new Date().toISOString(),
     });
+
+    const syncRun = startMatchSyncRun(String(matchId), {
+      name: session.user!.name || "admin",
+    }, {
+      source: "manual",
+      scheduledTime: null,
+      triggerStatus: "started",
+    });
+
+    if (syncRun.status === "in-progress") {
+      return NextResponse.json(
+        { error: "Sync already running for this match", status: "in-progress" },
+        { status: 409 }
+      );
+    }
+
+    const result = await syncRun.promise;
 
     return NextResponse.json(result);
 
