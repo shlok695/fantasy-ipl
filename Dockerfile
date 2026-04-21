@@ -2,19 +2,29 @@ FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends \
+     openssl ca-certificates python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
+RUN npm ci
 
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+     openssl ca-certificates python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN npx prisma generate && npm run build
+# Rebuild native modules inside this image so they match this container
+RUN npm rebuild sqlite3 --build-from-source || true
+
+RUN npx prisma generate
+RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
@@ -24,7 +34,8 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends \
+     openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/package.json ./package.json

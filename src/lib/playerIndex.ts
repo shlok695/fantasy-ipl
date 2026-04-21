@@ -1,4 +1,4 @@
-import { basePath } from '@/lib/basePath';
+import { basePath, withBasePath } from '@/lib/basePath';
 
 export const COUNTRY_FLAGS: Record<string, string> = {
   "India": "https://flagcdn.com/w40/in.png",
@@ -83,13 +83,13 @@ export function getPlayerImage(name: string, role?: string) {
 
   if (role) {
     const normalizedRole = role.toLowerCase();
-    if (normalizedRole.includes('batter') || normalizedRole.includes('batsman')) return `${basePath}/generic_players/batsman.png`;
-    if (normalizedRole.includes('bowler')) return `${basePath}/generic_players/bowler.jpeg`;
-    if (normalizedRole.includes('all-rounder') || normalizedRole.includes('allrounder')) return `${basePath}/generic_players/allrounder.png`;
-    if (normalizedRole.includes('wicket')) return `${basePath}/generic_players/wicketkeeper.png`;
+    if (normalizedRole.includes('batter') || normalizedRole.includes('batsman')) return withBasePath("/generic_players/batsman.png");
+    if (normalizedRole.includes('bowler')) return withBasePath("/generic_players/bowler.jpeg");
+    if (normalizedRole.includes('all-rounder') || normalizedRole.includes('allrounder')) return withBasePath("/generic_players/allrounder.png");
+    if (normalizedRole.includes('wicket')) return withBasePath("/generic_players/wicketkeeper.png");
   }
 
-  return `${basePath}/generic_players/batsman.png`;
+  return withBasePath("/generic_players/batsman.png");
 }
 
 export function getPlayerMeta(name: string) {

@@ -90,7 +90,7 @@ export function ExpandableSquadPlayerRow({
             <div className="flex items-start gap-3">
               <div className={rankRing}>{rank}</div>
               <Image
-                src={getPlayerImage(player.name, player.role)}
+                src={getPlayerImage(player.name, player.role || undefined)}
                 alt={player.name}
                 width={48}
                 height={48}
@@ -144,7 +144,7 @@ export function ExpandableSquadPlayerRow({
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className={rankRing}>{rank}</div>
               <Image
-                src={getPlayerImage(player.name, player.role)}
+                src={getPlayerImage(player.name, player.role || undefined)}
                 alt={player.name}
                 width={56}
                 height={56}

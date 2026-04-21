@@ -9,6 +9,7 @@
     "docker:start": "bash scripts/docker-up.sh",
     "lint": "eslint",
     "reprice": "node scripts/reprice-base-prices.js",
+    "live-sync:import": "node scripts/sync-live-sync-config.js",
     "simulate:test": "node scripts/simulate-ipl-test.js",
     "simulate:test:dry": "node scripts/simulate-ipl-test.js --dry-run",
     "simulate:clear": "node scripts/clear-simulated-test-data.js",
