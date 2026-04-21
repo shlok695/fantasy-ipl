@@ -39,6 +39,21 @@ type AutoSyncStatus =
   | "synced"
   | "error";
 
+type MatchSyncTriggerSource =
+  | "worker"
+  | "teams"
+  | "league-version"
+  | "manual"
+  | "auto-sync";
+
+type MatchSyncTriggerContext = {
+  source: MatchSyncTriggerSource;
+  scheduledTime?: string | null;
+  syncKey?: string | null;
+  triggerStatus?: AutoSyncStatus | "started" | "completed" | "skipped" | "failed";
+  reason?: string | null;
+};
+
 type MatchSyncStateRow = {
   syncKey: string;
   matchId: string | null;
@@ -309,6 +324,15 @@ type PartnerBonusPlan = {
   bonusPoints: number;
 };
 
+function buildPartnerBonusMarkerId(matchId: string, plan: PartnerBonusPlan) {
+  return [
+    "partner-bonus",
+    plan.auditAction.toLowerCase(),
+    matchId,
+    plan.teamCodes.join(",").toLowerCase(),
+  ].join(":");
+}
+
 function normalizeIplTeamCode(value?: string | null): string | null {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -397,9 +421,12 @@ const AUTO_SYNC_CHECKPOINT_MINUTES = [60, 120, 180, 270];
 const MIN_MATCHED_PLAYER_RATIO = 0.5;
 const MIN_MATCHED_PLAYER_COUNT = 8;
 const FIXTURE_MATCH_WINDOW_MS = 36 * 60 * 60_000;
-const IPL_SCHEDULE_TIME_ZONE = "America/New_York";
+export const IPL_TIMEZONE = "Asia/Kolkata";
+export const IPL_SCHEDULE_TIME_ZONE =
+  (process.env.IPL_SCHEDULE_TIME_ZONE || "").trim() || "America/New_York";
 const AUTO_SYNC_RETRY_DELAY_MS = 5 * 60_000;
 const MAX_AUTO_SYNC_ATTEMPTS_PER_TRIGGER = 2;
+const runningMatchSyncs = new Map<string, Promise<Awaited<ReturnType<typeof syncMatchPoints>>>>();
 
 type AutoScheduledSyncEntry = {
   syncKey: string;
@@ -612,6 +639,23 @@ function getTimeZoneOffsetMs(date: Date, timeZone: string) {
     0
   );
   return asUtc - date.getTime();
+}
+
+function logMatchSyncEvent(
+  event: string,
+  context: MatchSyncTriggerContext,
+  matchId?: string | null
+) {
+  console.log({
+    event,
+    source: context.source,
+    matchId: matchId ?? null,
+    scheduledTime: context.scheduledTime ?? null,
+    actualTime: new Date().toISOString(),
+    syncKey: context.syncKey ?? null,
+    status: context.triggerStatus ?? null,
+    reason: context.reason ?? null,
+  });
 }
 
 function buildTimeZoneDate(
@@ -940,6 +984,7 @@ async function maybeAutoSyncScheduledMatch(config: {
   matchId: string;
   triggerAt: string;
   intervalMs: number;
+  source: MatchSyncTriggerSource;
 }) {
   const gateKey = `scheduled:${config.syncKey}`;
   const existingGate = getAutoSyncPassiveGate(gateKey);
@@ -960,7 +1005,7 @@ async function maybeAutoSyncScheduledMatch(config: {
   }
 
   const runningPromise = autoSyncPromises.get(config.syncKey);
-  if (runningPromise) {
+  if (runningPromise || runningMatchSyncs.has(config.matchId)) {
     return "in-progress" as const;
   }
 
@@ -1013,10 +1058,25 @@ async function maybeAutoSyncScheduledMatch(config: {
 
   const syncPromise = (async () => {
     try {
-      await syncMatchPoints(config.matchId, {
-        name: "system:auto-sync",
-        bypassAdmin: true,
-      });
+      const syncRun = startMatchSyncRun(
+        config.matchId,
+        {
+          name: "system:auto-sync",
+          bypassAdmin: true,
+        },
+        {
+          source: config.source,
+          scheduledTime: config.triggerAt,
+          syncKey: config.syncKey,
+          triggerStatus: "started",
+        }
+      );
+
+      if (syncRun.status === "in-progress") {
+        return "in-progress" as const;
+      }
+
+      await syncRun.promise;
 
       await upsertMatchSyncState(config.syncKey, {
         matchId: config.matchId,
@@ -1067,6 +1127,7 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
   matchId: string;
   matchStartAt: string;
   intervalMs: number;
+  source: MatchSyncTriggerSource;
 }) {
   const gateKey = buildAutoSyncGateKey({
     enabled: config.enabled,
@@ -1106,7 +1167,7 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
 
   const syncKey = `auto-live-match:${matchId}`;
   const runningPromise = autoSyncPromises.get(syncKey);
-  if (runningPromise) {
+  if (runningPromise || runningMatchSyncs.has(matchId)) {
     return "in-progress" as const;
   }
 
@@ -1175,10 +1236,25 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
 
   const syncPromise = (async () => {
     try {
-      await syncMatchPoints(matchId, {
-        name: "system:auto-sync",
-        bypassAdmin: true,
-      });
+      const syncRun = startMatchSyncRun(
+        matchId,
+        {
+          name: "system:auto-sync",
+          bypassAdmin: true,
+        },
+        {
+          source: config.source,
+          scheduledTime: new Date(getCheckpointAt(matchStartTime, checkpoint)).toISOString(),
+          syncKey,
+          triggerStatus: "started",
+        }
+      );
+
+      if (syncRun.status === "in-progress") {
+        return "in-progress" as const;
+      }
+
+      await syncRun.promise;
 
       await upsertMatchSyncState(syncKey, {
         matchId,
@@ -1233,6 +1309,54 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
 
   autoSyncPromises.set(syncKey, syncPromise);
   return syncPromise;
+}
+
+export function startMatchSyncRun(
+  matchId: string,
+  actor: SyncActor,
+  context: MatchSyncTriggerContext
+) {
+  const runningSync = runningMatchSyncs.get(matchId);
+  if (runningSync) {
+    logMatchSyncEvent("match_sync_skipped_duplicate", {
+      ...context,
+      triggerStatus: "skipped",
+      reason: "sync already running for this match",
+    }, matchId);
+    return {
+      status: "in-progress" as const,
+      promise: runningSync,
+    };
+  }
+
+  logMatchSyncEvent("match_sync_triggered", context, matchId);
+  const promise = (async () => {
+    try {
+      const result = await syncMatchPoints(matchId, actor);
+      logMatchSyncEvent("match_sync_completed", {
+        ...context,
+        triggerStatus: "completed",
+      }, matchId);
+      return result;
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : "Unknown match sync error";
+      logMatchSyncEvent("match_sync_failed", {
+        ...context,
+        triggerStatus: "failed",
+        reason,
+      }, matchId);
+      throw error;
+    } finally {
+      runningMatchSyncs.delete(matchId);
+    }
+  })();
+
+  runningMatchSyncs.set(matchId, promise);
+  return {
+    status: "started" as const,
+    promise,
+  };
 }
 
 export async function syncMatchPoints(matchId: string, actor: SyncActor) {
@@ -1538,21 +1662,46 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
       : false;
 
     if (partnerBonusPlan && !partnerBonusAlreadyApplied) {
-      for (const teamCode of partnerBonusPlan.teamCodes) {
-        const partnerTeams = await tx.user.findMany({
-          where: { iplTeam: teamCode },
-          select: { id: true },
-        });
+      await tx.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "AdminAuditLog" (
+          "id" TEXT PRIMARY KEY,
+          "actor" TEXT NOT NULL,
+          "action" TEXT NOT NULL,
+          "details" TEXT NOT NULL,
+          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-        for (const partnerTeam of partnerTeams) {
-          await tx.user.update({
-            where: { id: partnerTeam.id },
-            data: { bonusPoints: { increment: partnerBonusPlan.bonusPoints } },
+      const partnerBonusMarkerId = buildPartnerBonusMarkerId(
+        effectiveMatchId,
+        partnerBonusPlan
+      );
+      const markerInserted = await tx.$executeRawUnsafe(
+        `INSERT OR IGNORE INTO "AdminAuditLog" ("id", "actor", "action", "details")
+         VALUES (?, ?, ?, ?)`,
+        partnerBonusMarkerId,
+        actor.name || "system",
+        `${partnerBonusPlan.auditAction}_MARKER`,
+        `match:${effectiveMatchId} teams:${partnerBonusPlan.teamCodes.join(",")} points:${partnerBonusPlan.bonusPoints}`
+      );
+
+      if (markerInserted > 0) {
+        for (const teamCode of partnerBonusPlan.teamCodes) {
+          const partnerTeams = await tx.user.findMany({
+            where: { iplTeam: teamCode },
+            select: { id: true },
           });
-          await recalculateTeamTotalPoints(partnerTeam.id, tx);
-        }
 
-        partnerBonusAppliedTeams += partnerTeams.length;
+          for (const partnerTeam of partnerTeams) {
+            await tx.user.update({
+              where: { id: partnerTeam.id },
+              data: { bonusPoints: { increment: partnerBonusPlan.bonusPoints } },
+            });
+            await recalculateTeamTotalPoints(partnerTeam.id, tx);
+          }
+
+          partnerBonusAppliedTeams += partnerTeams.length;
+        }
       }
     }
 
@@ -1657,11 +1806,39 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
   };
 }
 
-export async function maybeAutoSyncConfiguredMatch(): Promise<AutoSyncStatus> {
+export async function maybeAutoSyncConfiguredMatch(
+  options: { source?: MatchSyncTriggerSource } = {}
+): Promise<AutoSyncStatus> {
+  const source = options.source || "auto-sync";
+  logMatchSyncEvent("match_sync_entrypoint_called", {
+    source,
+    triggerStatus: "started",
+  });
+
   const config = await getAutoSyncRuntimeConfig();
 
   if (!config.enabled) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "disabled",
+      reason: "auto-sync is disabled",
+    });
     return "disabled";
+  }
+
+  const passiveApiTriggersEnabled =
+    String(process.env.AUTO_SYNC_ALLOW_PASSIVE_API_TRIGGERS || "").trim().toLowerCase() ===
+    "true";
+  if (
+    !passiveApiTriggersEnabled &&
+    (source === "teams" || source === "league-version")
+  ) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "throttled",
+      reason: "passive API trigger disabled",
+    });
+    return "throttled";
   }
 
   if (config.scheduledEntries.length > 0) {
@@ -1672,31 +1849,62 @@ export async function maybeAutoSyncConfiguredMatch(): Promise<AutoSyncStatus> {
           matchId: entry.matchId,
           triggerAt: entry.triggerAt,
           intervalMs: config.intervalMs,
+          source,
         })
       )
     );
 
     if (results.some((status) => status === "in-progress")) {
+      logMatchSyncEvent("match_sync_entrypoint_finished", {
+        source,
+        triggerStatus: "in-progress",
+      });
       return "in-progress";
     }
     if (results.some((status) => status === "synced")) {
+      logMatchSyncEvent("match_sync_entrypoint_finished", {
+        source,
+        triggerStatus: "synced",
+      });
       return "synced";
     }
     if (results.some((status) => status === "error")) {
+      logMatchSyncEvent("match_sync_entrypoint_finished", {
+        source,
+        triggerStatus: "error",
+      });
       return "error";
     }
     if (results.every((status) => status === "already-synced")) {
+      logMatchSyncEvent("match_sync_entrypoint_finished", {
+        source,
+        triggerStatus: "already-synced",
+      });
       return "already-synced";
     }
 
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "throttled",
+    });
     return "throttled";
   }
 
   if (config.entries.error) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "throttled",
+      reason: config.entries.error,
+    });
     return "throttled";
   }
 
   if (config.entries.entries.length === 0) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "throttled",
+      reason: "no configured live-sync entries",
+    });
     return "throttled";
   }
 
@@ -1707,25 +1915,50 @@ export async function maybeAutoSyncConfiguredMatch(): Promise<AutoSyncStatus> {
         matchId: entry.matchId,
         matchStartAt: entry.matchStartAt,
         intervalMs: config.intervalMs,
+        source,
       })
     )
   );
 
   if (results.some((status) => status === "in-progress")) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "in-progress",
+    });
     return "in-progress";
   }
   if (results.some((status) => status === "synced")) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "synced",
+    });
     return "synced";
   }
   if (results.some((status) => status === "error")) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "error",
+    });
     return "error";
   }
   if (results.every((status) => status === "already-synced")) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "already-synced",
+    });
     return "already-synced";
   }
   if (results.every((status) => status === "disabled")) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "disabled",
+    });
     return "disabled";
   }
 
+  logMatchSyncEvent("match_sync_entrypoint_finished", {
+    source,
+    triggerStatus: "throttled",
+  });
   return "throttled";
 }

@@ -11,7 +11,7 @@ export const revalidate = 0;
 export async function GET() {
   try {
     try {
-      await maybeAutoSyncConfiguredMatch();
+      await maybeAutoSyncConfiguredMatch({ source: "teams" });
     } catch (syncError) {
       console.error("Auto-sync skipped after failure in /api/teams", syncError);
     }

@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
+    "test": "node src/app/api/auction/route.test.mjs",
     "docker:start": "bash scripts/docker-up.sh",
     "lint": "eslint",
     "reprice": "node scripts/reprice-base-prices.js",
