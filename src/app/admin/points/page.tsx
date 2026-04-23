@@ -623,7 +623,7 @@ export default function PointsAdmin() {
           </div>
           <div>
             <h2 className="text-lg sm:text-xl font-bold">Auto Live Sync Settings</h2>
-            <p className="text-xs sm:text-sm text-gray-400">For strict quota mode, pin the detected match and start time. The worker will then sync at 4 scheduled checkpoints only.</p>
+            <p className="text-xs sm:text-sm text-gray-400">For strict quota mode, pin the detected match and start time. The worker will only wake on the ET trigger checkpoints instead of polling all day.</p>
           </div>
           <button
             type="button"
@@ -691,7 +691,7 @@ export default function PointsAdmin() {
               <p className="mt-1 text-[11px] text-gray-500">First sync checkpoint in minutes after match start. Default is 60 minutes, roughly 10 overs.</p>
             </div>
             <div>
-              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Retry Interval (ms)</label>
+              <label className="block text-[10px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-widest">Minimum Retry Gap (ms)</label>
               <input
                 type="number"
                 min="1000"

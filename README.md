@@ -31,7 +31,10 @@ NEXTAUTH_SECRET="anything_you_like"
 NEXTAUTH_URL="http://localhost:3000/ipl"
 NEXT_PUBLIC_BASE_PATH="/ipl"
 INTERNAL_APP_URL="http://app:3000"
-AUTO_SYNC_WORKER_RETRY_MS="60000"
+IPL_SCHEDULE_TIME_ZONE="America/New_York"
+AUTO_SYNC_WORKER_WEEKDAY_TRIGGER_TIMES="12:30,14:30"
+AUTO_SYNC_WORKER_WEEKEND_TRIGGER_TIMES="08:30,09:55,12:30,14:30"
+AUTO_SYNC_WORKER_MAX_REQUESTS_PER_DAY="80"
 CRICKET_API_KEY="your_cricketdata_or_cricapi_key" # Preferred for live sync and scorecards
 RAPIDAPI_CRICBUZZ_KEY="your_rapidapi_key"
 RAPIDAPI_CRICBUZZ_HOST="cricbuzz-cricket.p.rapidapi.com"
@@ -47,7 +50,7 @@ http://localhost:3000/ipl
 
 The container uses `npm start` after the build completes, so PM2 is no longer part of the app runtime. The launcher will use `docker compose` if your Docker install supports it, and fall back to `docker-compose` otherwise.
 Docker Compose also runs a dedicated `sync-worker` service so live match sync does not depend on frontend traffic.
-If the app is down during a scheduled sync window, or if the sync endpoint responds with `throttled` / `in-progress` while catching up, the worker stays on a short retry loop and catches up as soon as the app and sync window are ready.
+The worker now sleeps between fixed trigger times instead of polling all day. By default it wakes at `12:30` and `14:30` on weekdays in `America/New_York`, and at `08:30`, `09:55`, `12:30`, and `14:30` on weekends. It also stops after `80` worker hits in the current East Coast day.
 If you deploy behind a different host or reverse proxy, change `NEXTAUTH_URL` in `docker-compose.yml` to match that public URL and keep the `/ipl` base path.
 
 ## Local Development
