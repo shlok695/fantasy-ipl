@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/errorMessage";
-import { maybeAutoSyncConfiguredMatch } from "@/lib/matchSync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,10 +16,13 @@ function toIso(value: Date | string | null | undefined) {
 
 export async function GET() {
   try {
-    try {
-      await maybeAutoSyncConfiguredMatch({ source: "league-version" });
-    } catch (syncError) {
-      console.error("Auto-sync skipped after failure in /api/league-version", syncError);
+    if (process.env.AUTO_SYNC_ALLOW_PASSIVE_API_TRIGGERS === "true") {
+      try {
+        const { maybeAutoSyncConfiguredMatch } = await import("@/lib/matchSync");
+        await maybeAutoSyncConfiguredMatch({ source: "league-version" });
+      } catch (syncError) {
+        console.error("Auto-sync skipped after failure in /api/league-version", syncError);
+      }
     }
 
     const [pointsSummary, teamSummary, matchSummary] = await Promise.all([
