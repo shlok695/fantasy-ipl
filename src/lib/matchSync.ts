@@ -959,6 +959,7 @@ async function getAutoSyncRuntimeConfig() {
       ? envIntervalMs
       : stored.intervalMs;
   const enabled = envMatchId ? true : stored.enabled;
+  const todayKey = getTimeZoneParts(new Date(), IPL_SCHEDULE_TIME_ZONE).dayKey;
   let scheduledEntries: AutoScheduledSyncEntry[] = [];
 
   if (!envMatchId && enabled) {
@@ -972,6 +973,8 @@ async function getAutoSyncRuntimeConfig() {
       matchId,
       matchStartAt,
     }),
+    shouldUseStoredEntries:
+      Boolean(envMatchId) || isSameIplDay(matchStartAt, todayKey),
     afterOverMinutes,
     intervalMs,
     enabled,
@@ -1886,6 +1889,15 @@ export async function maybeAutoSyncConfiguredMatch(
     logMatchSyncEvent("match_sync_entrypoint_finished", {
       source,
       triggerStatus: "throttled",
+    });
+    return "throttled";
+  }
+
+  if (!config.shouldUseStoredEntries) {
+    logMatchSyncEvent("match_sync_entrypoint_finished", {
+      source,
+      triggerStatus: "throttled",
+      reason: "no auto-detected match for today and stored live-sync config is not for today",
     });
     return "throttled";
   }
