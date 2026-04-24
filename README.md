@@ -50,7 +50,7 @@ http://localhost:3000/ipl
 
 The container uses `npm start` after the build completes, so PM2 is no longer part of the app runtime. The launcher will use `docker compose` if your Docker install supports it, and fall back to `docker-compose` otherwise.
 Docker Compose also runs a dedicated `sync-worker` service so live match sync does not depend on frontend traffic.
-The worker now sleeps between fixed trigger times instead of polling all day. By default it wakes at `12:30` and `14:30` on weekdays in `America/New_York`, and at `08:30`, `09:55`, `12:30`, and `14:30` on weekends. It also stops after `80` worker hits in the current East Coast day.
+The worker now sleeps between fixed trigger times instead of polling all day. By default it wakes at `12:30`, `14:30`, and `16:00` on weekdays in `America/New_York`, and at `08:30`, `09:55`, `12:30`, `14:30`, and `16:00` on weekends. The `16:00` trigger gives same-day provider or quota failures one late retry. It also stops after `80` worker hits in the current East Coast day.
 If you deploy behind a different host or reverse proxy, change `NEXTAUTH_URL` in `docker-compose.yml` to match that public URL and keep the `/ipl` base path.
 
 ## Local Development

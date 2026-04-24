@@ -3,17 +3,19 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { getErrorMessage } from '@/lib/errorMessage';
-import { maybeAutoSyncConfiguredMatch } from '@/lib/matchSync';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET() {
   try {
-    try {
-      await maybeAutoSyncConfiguredMatch({ source: "teams" });
-    } catch (syncError) {
-      console.error("Auto-sync skipped after failure in /api/teams", syncError);
+    if (process.env.AUTO_SYNC_ALLOW_PASSIVE_API_TRIGGERS === "true") {
+      try {
+        const { maybeAutoSyncConfiguredMatch } = await import('@/lib/matchSync');
+        await maybeAutoSyncConfiguredMatch({ source: "teams" });
+      } catch (syncError) {
+        console.error("Auto-sync skipped after failure in /api/teams", syncError);
+      }
     }
 
     const users = await prisma.user.findMany({

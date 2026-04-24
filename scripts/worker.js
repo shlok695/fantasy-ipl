@@ -47,10 +47,10 @@ const STATE_PATH =
   (process.env.AUTO_SYNC_WORKER_STATE_PATH || "").trim() ||
   path.join("/tmp", "fantasy-ipl-sync-worker-state.json");
 const WEEKDAY_TRIGGER_TIMES = parseTriggerTimes(
-  process.env.AUTO_SYNC_WORKER_WEEKDAY_TRIGGER_TIMES || "12:30,14:30"
+  process.env.AUTO_SYNC_WORKER_WEEKDAY_TRIGGER_TIMES || "12:30,14:30,16:00"
 );
 const WEEKEND_TRIGGER_TIMES = parseTriggerTimes(
-  process.env.AUTO_SYNC_WORKER_WEEKEND_TRIGGER_TIMES || "08:30,09:55,12:30,14:30"
+  process.env.AUTO_SYNC_WORKER_WEEKEND_TRIGGER_TIMES || "08:30,09:55,12:30,14:30,16:00"
 );
 
 if (!SECRET) {
@@ -321,9 +321,7 @@ function reserveDailyRequestSlot(now = new Date()) {
 }
 
 function buildCandidateUrls() {
-  const paths = [`/api/sync-worker`, `${BASE_PATH}/api/sync-worker`].filter(
-    (value, index, items) => value && items.indexOf(value) === index
-  );
+  const paths = [BASE_PATH ? `${BASE_PATH}/api/sync-worker` : `/api/sync-worker`];
 
   return paths.map((pathname) => {
     const url = new URL(pathname, BASE_URL);
