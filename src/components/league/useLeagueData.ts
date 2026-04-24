@@ -16,7 +16,24 @@ type LeagueVersionResponse = {
   version?: string | null;
 };
 
-export function useLeagueData(intervalMs = 2000) {
+const DEFAULT_REFRESH_INTERVAL_MS = 30_000;
+const MIN_REFRESH_INTERVAL_MS = 15_000;
+
+function getRefreshIntervalMs(value: number | undefined) {
+  const envInterval = Number.parseInt(
+    process.env.NEXT_PUBLIC_LEAGUE_REFRESH_INTERVAL_MS || "",
+    10
+  );
+  const requestedInterval = typeof value === "number" && Number.isFinite(value)
+    ? value
+    : Number.isFinite(envInterval)
+      ? envInterval
+      : DEFAULT_REFRESH_INTERVAL_MS;
+
+  return Math.max(requestedInterval, MIN_REFRESH_INTERVAL_MS);
+}
+
+export function useLeagueData(intervalMs?: number) {
   const { data: session } = useSession();
   const [teams, setTeams] = useState<DashboardTeam[]>([]);
   const [leaders, setLeaders] = useState<LeagueLeadersResponse | null>(null);
@@ -136,10 +153,17 @@ export function useLeagueData(intervalMs = 2000) {
 
     void bootstrap();
 
-    const versionInterval = window.setInterval(checkLeagueVersion, intervalMs);
+    const refreshIntervalMs = getRefreshIntervalMs(intervalMs);
+    const versionInterval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void checkLeagueVersion();
+      }
+    }, refreshIntervalMs);
     const fallbackInterval = window.setInterval(() => {
-      void fetchLeagueSnapshot();
-    }, Math.max(intervalMs * 6, 15000));
+      if (document.visibilityState === "visible") {
+        void fetchLeagueSnapshot();
+      }
+    }, Math.max(refreshIntervalMs * 4, 120_000));
 
     return () => {
       active = false;
