@@ -20,8 +20,8 @@ export default function TeamsPage() {
         eyebrow="Teams"
         title="Fantasy Franchises"
         description="Browse every fantasy team, scan their current form, and open dedicated team detail views for full squad context and season badges."
-        primaryHref="/leaderboard"
-        primaryLabel="Open Rankings"
+        primaryHref="/teams/compare"
+        primaryLabel="Compare Teams"
         secondaryHref="/players"
         secondaryLabel="Player Stats"
       />
