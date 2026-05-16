@@ -54,6 +54,7 @@ export default async function RootLayout({
               <Link href="/" className="hover:text-indigo-400 transition-colors">Dashboard</Link>
               <Link href="/leaderboard" className="hover:text-indigo-400 transition-colors">Leaderboard</Link>
               <Link href="/teams" className="hover:text-indigo-400 transition-colors">Teams</Link>
+              <Link href="/teams/compare" className="hover:text-indigo-400 transition-colors">Compare</Link>
               <Link href="/players" className="hover:text-indigo-400 transition-colors">Players</Link>
               <Link href="/season" className="hover:text-indigo-400 transition-colors">Season</Link>
               {session?.user && (

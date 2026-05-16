@@ -20,8 +20,8 @@ export default function LeaderboardPage() {
         eyebrow="Leaderboard"
         title="Full League Rankings"
         description="See the entire points table, track rank swings after the latest scoring update, and compare the teams shaping the title race."
-        primaryHref="/teams"
-        primaryLabel="Browse Teams"
+        primaryHref="/teams/compare"
+        primaryLabel="Compare Teams"
         secondaryHref="/season"
         secondaryLabel="Season View"
       />
