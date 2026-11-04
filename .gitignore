@@ -45,3 +45,6 @@ next-env.d.ts
 # SQLite Database
 *.db
 *.db-journal
+*.db
+*.xlsx
+data_dump/
