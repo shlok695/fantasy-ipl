@@ -16,11 +16,30 @@ type LeagueVersionResponse = {
   version?: string | null;
 };
 
+export type SyncAlert = {
+  syncKey: string;
+  matchId: string | null;
+  apiId?: string | null;
+  displayId: string | null;
+  shortTitle: string | null;
+  status: string | null;
+  attempts: number;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  startedAt: string | null;
+};
+
+type SyncAlertsResponse = {
+  alerts?: SyncAlert[];
+};
+
 const DEFAULT_REFRESH_INTERVAL_MS = 30_000;
 const MIN_REFRESH_INTERVAL_MS = 15_000;
 const LEAGUE_SNAPSHOT_CACHE_KEY = "fantasy-ipl:league-snapshot";
 const SNAPSHOT_TIMEOUT_MS = 20_000;
 const VERSION_TIMEOUT_MS = 10_000;
+const ALERTS_TIMEOUT_MS = 10_000;
 const BOOTSTRAP_RETRY_DELAYS_MS = [600, 1400, 2600];
 
 type CachedLeagueSnapshot = {
@@ -83,10 +102,58 @@ export function useLeagueData(intervalMs?: number) {
   const { data: session } = useSession();
   const [teams, setTeams] = useState<DashboardTeam[]>([]);
   const [leaders, setLeaders] = useState<LeagueLeadersResponse | null>(null);
+  const [syncAlerts, setSyncAlerts] = useState<SyncAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const latestVersionRef = useRef<string | null>(null);
   const snapshotInFlightRef = useRef(false);
   const versionInFlightRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const fetchSyncAlerts = async () => {
+      if (session?.user?.name !== "admin") {
+        setSyncAlerts([]);
+        return;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), ALERTS_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(`${basePath}/api/admin/sync-alerts`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as SyncAlertsResponse;
+        if (active) {
+          setSyncAlerts(Array.isArray(data.alerts) ? data.alerts : []);
+        }
+      } catch (error) {
+        console.error("Failed to load sync alerts", error);
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    };
+
+    void fetchSyncAlerts();
+    const refreshIntervalMs = getRefreshIntervalMs(intervalMs);
+    const alertsInterval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void fetchSyncAlerts();
+      }
+    }, refreshIntervalMs);
+
+    return () => {
+      active = false;
+      window.clearInterval(alertsInterval);
+    };
+  }, [intervalMs, session?.user?.name]);
 
   useEffect(() => {
     let active = true;
@@ -277,6 +344,7 @@ export function useLeagueData(intervalMs?: number) {
     session,
     currentUserId,
     isAdmin,
+    syncAlerts,
     derived,
   };
 }
