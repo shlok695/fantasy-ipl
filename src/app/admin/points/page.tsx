@@ -68,6 +68,19 @@ function getBreakdownSummary(entry: any) {
   }
 }
 
+function formatSyncTimestamp(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
 export default function PointsAdmin() {
   const [players, setPlayers] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
@@ -421,22 +434,29 @@ export default function PointsAdmin() {
     }
   };
 
-  const awardPartnerWinBonus = async (e: React.FormEvent) => {
+  const awardPartnerWinBonus = async (e: React.SyntheticEvent, bonusPoints = 50) => {
     e.preventDefault();
     if (!winningIplTeam) return;
+    if (bonusPoints === 500) {
+      const confirmed = window.confirm(`Apply the IPL final +500 partner bonus to ${winningIplTeam} franchises?`);
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setTeamLoading(true);
     try {
       const res = await fetch(`${basePath}/api/admin/match-win`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iplTeam: winningIplTeam })
+        body: JSON.stringify({ iplTeam: winningIplTeam, bonusPoints })
       });
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || 'Failed to award partner win bonus');
         return;
       }
-      alert(`${winningIplTeam} win bonus applied`);
+      alert(`${winningIplTeam} +${bonusPoints} win bonus applied`);
       await fetchTeams();
       await fetchAuditLogs();
     } catch {
@@ -452,7 +472,7 @@ export default function PointsAdmin() {
       return;
     }
 
-    const confirmed = window.confirm('Apply the season-end Orange Cap, Purple Cap, and MVP bonuses now? This should only be done once.');
+    const confirmed = window.confirm('Apply the season-end Orange Cap, Purple Cap, and True MVP bonuses now? This should only be done once.');
     if (!confirmed) {
       return;
     }
@@ -713,7 +733,11 @@ export default function PointsAdmin() {
             {detectedMatchSlots.map((match, index) => {
               const hasMatch = Boolean(match?.id);
               const isFinished = String(match?.status || "").toLowerCase().includes("finish");
-              const isEarlyMatch = Number(match?.overs || 0) < 10 && !isFinished;
+              const syncState = match?.syncState || null;
+              const hasSuccessfulSync = Boolean(syncState?.lastSuccessAt);
+              const syncTimestamp = formatSyncTimestamp(syncState?.lastSuccessAt);
+              const syncLabel = syncState?.status === 'complete' ? 'Complete sync' : 'Partial sync';
+              const isEarlyMatch = Number(match?.overs || 0) < 10 && !isFinished && !hasSuccessfulSync;
 
               return (
                 <div
@@ -754,11 +778,15 @@ export default function PointsAdmin() {
                           {match.seriesName || 'Unknown series'}{match.matchType ? ` • ${match.matchType}` : ''}
                         </p>
                       )}
-                      {isEarlyMatch && (
+                      {hasSuccessfulSync ? (
+                        <p className="mt-2 text-[11px] font-bold text-emerald-300 uppercase tracking-widest flex items-center gap-1">
+                          <CheckCircle size={12} /> {syncLabel}{syncTimestamp ? ` • ${syncTimestamp}` : ''}
+                        </p>
+                      ) : isEarlyMatch ? (
                         <p className="mt-2 text-[11px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1">
                           <RefreshCw size={12} className="animate-spin" /> Waiting for the first scheduled sync checkpoint after 10 overs.
                         </p>
-                      )}
+                      ) : null}
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           type="button"
@@ -793,6 +821,7 @@ export default function PointsAdmin() {
                   matchType: detectedMatchSlots[0].matchType || null,
                   status: detectedMatchSlots[0].status || null,
                   overs: detectedMatchSlots[0].overs ?? null,
+                  syncState: detectedMatchSlots[0].syncState || null,
                   score: detectedMatchSlots[0].score || [],
                   debugPayload: detectedMatchSlots[0].debugPayload || null,
                 }, null, 2)}
@@ -1061,7 +1090,7 @@ export default function PointsAdmin() {
               <Trophy className="text-fuchsia-400" />
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold">Season-End Awards</h2>
-                <p className="text-sm text-gray-400">Apply +500 to the franchise of the Orange Cap, Purple Cap, and Most Valuable Player winners.</p>
+                <p className="text-sm text-gray-400">Apply +500 to the franchise of the Orange Cap, Purple Cap, and True MVP winners.</p>
               </div>
             </div>
             <div className="space-y-4">
@@ -1084,10 +1113,10 @@ export default function PointsAdmin() {
               <Award className="text-emerald-400" />
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold">Partner IPL Team Win</h2>
-                <p className="text-sm text-gray-400">Award +50 bonus points to all franchises linked to the winning IPL team.</p>
+                <p className="text-sm text-gray-400">Award partner bonuses to all franchises linked to the winning IPL team. Use +500 for the IPL final winner.</p>
               </div>
             </div>
-            <form onSubmit={awardPartnerWinBonus} className="space-y-4">
+            <form onSubmit={(event) => awardPartnerWinBonus(event)} className="space-y-4">
               <select
                 value={winningIplTeam}
                 onChange={(e) => setWinningIplTeam(e.target.value)}
@@ -1104,6 +1133,14 @@ export default function PointsAdmin() {
                 className="w-full rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
               >
                 {teamLoading ? 'Applying...' : 'Apply +50 Partner Bonus'}
+              </button>
+              <button
+                type="button"
+                onClick={(event) => awardPartnerWinBonus(event, 500)}
+                disabled={teamLoading || !winningIplTeam}
+                className="w-full rounded-2xl bg-amber-500 hover:bg-amber-400 text-black font-black py-4 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                {teamLoading ? 'Applying...' : 'Apply +500 Final Partner Bonus'}
               </button>
             </form>
           </div>

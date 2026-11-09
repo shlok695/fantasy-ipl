@@ -9,11 +9,13 @@ type PlayerWithPoints = {
     points?: number;
     runs?: number;
     wickets?: number;
+    breakdownJson?: string | null;
+    multiplierValue?: number | null;
   }>;
 };
 
 type AwardWinner = {
-  award: "orangeCap" | "purpleCap" | "mostValuablePlayer";
+  award: "orangeCap" | "purpleCap" | "trueMvp";
   label: string;
   playerId: string;
   playerName: string;
@@ -24,8 +26,55 @@ type AwardWinner = {
 
 export type SeasonAwardWinner = AwardWinner;
 
+type PlayerPointsBreakdown = {
+  subtotal?: unknown;
+  multiplierValue?: unknown;
+};
+
 function sumMetric(player: PlayerWithPoints, metric: "points" | "runs" | "wickets") {
   return (player.points || []).reduce((sum, entry) => sum + (entry?.[metric] || 0), 0);
+}
+
+function toFiniteNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseBreakdownJson(value: string | null | undefined): PlayerPointsBreakdown | null {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    return parsed as PlayerPointsBreakdown;
+  } catch {
+    return null;
+  }
+}
+
+function getRawFantasyPointsFromEntry(entry: NonNullable<PlayerWithPoints["points"]>[number]) {
+  const breakdown = parseBreakdownJson(entry.breakdownJson);
+  const subtotal = toFiniteNumber(breakdown?.subtotal);
+  if (subtotal !== null) {
+    return subtotal;
+  }
+
+  const points = entry.points || 0;
+  const multiplierValue = toFiniteNumber(breakdown?.multiplierValue ?? entry.multiplierValue);
+  if (multiplierValue !== null && multiplierValue !== 0) {
+    return points / multiplierValue;
+  }
+
+  return points;
+}
+
+function sumRawFantasyPoints(player: PlayerWithPoints) {
+  return (player.points || []).reduce((sum, entry) => sum + getRawFantasyPointsFromEntry(entry), 0);
 }
 
 function pickLeader(
@@ -52,6 +101,24 @@ function pickLeader(
     })[0];
 }
 
+function pickTrueMvp(players: PlayerWithPoints[]) {
+  return [...players]
+    .map((player) => ({
+      player,
+      metricValue: sumRawFantasyPoints(player),
+      tieBreakerValue: sumMetric(player, "runs"),
+    }))
+    .sort((left, right) => {
+      const metricDelta = right.metricValue - left.metricValue;
+      if (metricDelta !== 0) return metricDelta;
+
+      const tieBreakerDelta = right.tieBreakerValue - left.tieBreakerValue;
+      if (tieBreakerDelta !== 0) return tieBreakerDelta;
+
+      return left.player.name.localeCompare(right.player.name) || left.player.id.localeCompare(right.player.id);
+    })[0];
+}
+
 export function getSeasonAwardWinners(players: PlayerWithPoints[]): AwardWinner[] {
   const eligiblePlayers = players.filter((player) => Boolean(player.userId));
   if (eligiblePlayers.length === 0) {
@@ -60,7 +127,7 @@ export function getSeasonAwardWinners(players: PlayerWithPoints[]): AwardWinner[
 
   const orangeCap = pickLeader(eligiblePlayers, "runs");
   const purpleCap = pickLeader(eligiblePlayers, "wickets");
-  const mvp = pickLeader(eligiblePlayers, "points", "runs");
+  const trueMvp = pickTrueMvp(eligiblePlayers);
 
   return [
     orangeCap
@@ -85,15 +152,15 @@ export function getSeasonAwardWinners(players: PlayerWithPoints[]): AwardWinner[
           statValue: purpleCap.metricValue,
         }
       : null,
-    mvp
+    trueMvp
       ? {
-          award: "mostValuablePlayer",
-          label: "Most Valuable Player",
-          playerId: mvp.player.id,
-          playerName: mvp.player.name,
-          userId: mvp.player.userId!,
-          franchiseName: mvp.player.user?.name || "Unknown Franchise",
-          statValue: mvp.metricValue,
+          award: "trueMvp",
+          label: "True MVP",
+          playerId: trueMvp.player.id,
+          playerName: trueMvp.player.name,
+          userId: trueMvp.player.userId!,
+          franchiseName: trueMvp.player.user?.name || "Unknown Franchise",
+          statValue: trueMvp.metricValue,
         }
       : null,
   ].filter((winner): winner is AwardWinner => Boolean(winner));

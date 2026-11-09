@@ -7,6 +7,7 @@ import {
   saveLiveSyncConfig,
 } from "@/lib/liveSyncConfig";
 import { recordAdminAudit } from "@/lib/adminAudit";
+import { prisma } from "@/lib/prisma";
 import {
   detectCurrentIplMatch,
   detectCurrentIplMatches,
@@ -25,7 +26,107 @@ function sanitizeDebugPayload(value: unknown) {
   }
 }
 
-function serializeDetectedMatch(detectedMatch: NonNullable<Awaited<ReturnType<typeof detectCurrentIplMatch>>>) {
+function isFinalMatchStatus(statusText?: string | null) {
+  const status = String(statusText || "").toLowerCase();
+  if (!status.trim()) {
+    return false;
+  }
+
+  return /\b(won|won by|lost|no result|abandon(?:ed)?|washout|match over|finished|complete(?:d)?|super over)\b/.test(status);
+}
+
+type MatchSyncStateSnapshot = {
+  syncKey: string;
+  matchId: string | null;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  lastCheckpoint: number | null;
+};
+
+async function ensureMatchSyncStateTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "MatchSyncState" (
+      "syncKey" TEXT PRIMARY KEY,
+      "matchId" TEXT,
+      "lastAttemptAt" DATETIME,
+      "lastSuccessAt" DATETIME,
+      "lastError" TEXT,
+      "lastCheckpoint" INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+}
+
+async function getSyncStateByMatchId(matchIds: string[]) {
+  const uniqueIds = Array.from(new Set(matchIds.map((id) => id.trim()).filter(Boolean)));
+  const byMatchId = new Map<string, MatchSyncStateSnapshot>();
+
+  if (uniqueIds.length === 0) {
+    return byMatchId;
+  }
+
+  await ensureMatchSyncStateTable();
+
+  const placeholders = uniqueIds.map(() => "?").join(", ");
+  const rows = await prisma.$queryRawUnsafe<MatchSyncStateSnapshot[]>(
+    `
+      SELECT "syncKey", "matchId", "lastAttemptAt", "lastSuccessAt", "lastError", "lastCheckpoint"
+      FROM "MatchSyncState"
+      WHERE "matchId" IN (${placeholders})
+        AND (
+          "syncKey" LIKE 'auto-live-match:%'
+          OR "syncKey" LIKE 'auto-scheduled-match:%'
+          OR "syncKey" LIKE 'auto-unfinished-match:%'
+        )
+      ORDER BY
+        CASE WHEN "lastSuccessAt" IS NULL THEN 1 ELSE 0 END,
+        COALESCE("lastSuccessAt", "lastAttemptAt") DESC
+    `,
+    ...uniqueIds
+  );
+
+  for (const row of rows) {
+    const matchId = String(row.matchId || "").trim();
+    if (matchId && !byMatchId.has(matchId)) {
+      byMatchId.set(matchId, row);
+    }
+  }
+
+  return byMatchId;
+}
+
+function serializeSyncState(
+  detectedMatch: NonNullable<Awaited<ReturnType<typeof detectCurrentIplMatch>>>,
+  syncState?: MatchSyncStateSnapshot
+) {
+  if (!syncState) {
+    return null;
+  }
+
+  const syncStatus = syncState.lastSuccessAt
+    ? isFinalMatchStatus(detectedMatch.status)
+      ? "complete"
+      : "partial"
+    : syncState.lastError
+      ? "error"
+      : syncState.lastAttemptAt
+        ? "attempted"
+        : "waiting";
+
+  return {
+    status: syncStatus,
+    syncKey: syncState.syncKey,
+    lastAttemptAt: syncState.lastAttemptAt,
+    lastSuccessAt: syncState.lastSuccessAt,
+    lastError: syncState.lastError,
+    lastCheckpoint: syncState.lastCheckpoint,
+  };
+}
+
+function serializeDetectedMatch(
+  detectedMatch: NonNullable<Awaited<ReturnType<typeof detectCurrentIplMatch>>>,
+  syncState?: MatchSyncStateSnapshot
+) {
   return {
     id: detectedMatch.id,
     name: detectedMatch.name,
@@ -36,6 +137,7 @@ function serializeDetectedMatch(detectedMatch: NonNullable<Awaited<ReturnType<ty
     matchType: detectedMatch.matchType || null,
     seriesId: detectedMatch.series_id || null,
     seriesName: detectedMatch.series_name || null,
+    syncState: serializeSyncState(detectedMatch, syncState),
     score: detectedMatch.score || [],
     debugPayload: sanitizeDebugPayload(detectedMatch.debugRaw),
   };
@@ -54,15 +156,23 @@ export async function GET(request: Request) {
     const config = await getLiveSyncConfig();
     const detectedMatches = await detectCurrentIplMatches({ forceRefresh });
     const detectedMatch = detectedMatches[0] || (await detectCurrentIplMatch({ forceRefresh }));
+    const matchesForResponse =
+      detectedMatches.length > 0 ? detectedMatches : detectedMatch ? [detectedMatch] : [];
+    const syncStateByMatchId = await getSyncStateByMatchId(
+      matchesForResponse.map((match) => String(match.id || ""))
+    );
+
     return NextResponse.json({
       config,
-      detectedMatches:
-        detectedMatches.length > 0
-          ? detectedMatches.map(serializeDetectedMatch)
-          : detectedMatch
-            ? [serializeDetectedMatch(detectedMatch)]
-            : [],
-      detectedMatch: detectedMatch ? serializeDetectedMatch(detectedMatch) : null,
+      detectedMatches: matchesForResponse.map((match) =>
+        serializeDetectedMatch(match, syncStateByMatchId.get(String(match.id || "").trim()))
+      ),
+      detectedMatch: detectedMatch
+        ? serializeDetectedMatch(
+            detectedMatch,
+            syncStateByMatchId.get(String(detectedMatch.id || "").trim())
+          )
+        : null,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 
 type AuditDb = {
-  $executeRawUnsafe: (query: string, ...values: any[]) => PromiseLike<unknown>;
+  $executeRawUnsafe: (query: string, ...values: unknown[]) => PromiseLike<unknown>;
 };
 
 export async function ensureAdminAuditTable(db: AuditDb = prisma) {
