@@ -31,7 +31,10 @@ async function recalculateLeagueTotalPoints(tx) {
 
 async function recalculateTeamTotalPoints(teamId, tx) {
   const players = await tx.player.findMany({
-    where: { userId: teamId },
+    where: {
+      userId: teamId,
+      role: { not: "IPL TEAM" },
+    },
     include: { points: true },
   });
 

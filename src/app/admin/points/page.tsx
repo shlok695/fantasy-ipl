@@ -434,22 +434,29 @@ export default function PointsAdmin() {
     }
   };
 
-  const awardPartnerWinBonus = async (e: React.FormEvent) => {
+  const awardPartnerWinBonus = async (e: React.SyntheticEvent, bonusPoints = 50) => {
     e.preventDefault();
     if (!winningIplTeam) return;
+    if (bonusPoints === 500) {
+      const confirmed = window.confirm(`Apply the IPL final +500 partner bonus to ${winningIplTeam} franchises?`);
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setTeamLoading(true);
     try {
       const res = await fetch(`${basePath}/api/admin/match-win`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iplTeam: winningIplTeam })
+        body: JSON.stringify({ iplTeam: winningIplTeam, bonusPoints })
       });
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || 'Failed to award partner win bonus');
         return;
       }
-      alert(`${winningIplTeam} win bonus applied`);
+      alert(`${winningIplTeam} +${bonusPoints} win bonus applied`);
       await fetchTeams();
       await fetchAuditLogs();
     } catch {
@@ -465,7 +472,7 @@ export default function PointsAdmin() {
       return;
     }
 
-    const confirmed = window.confirm('Apply the season-end Orange Cap, Purple Cap, and MVP bonuses now? This should only be done once.');
+    const confirmed = window.confirm('Apply the season-end Orange Cap, Purple Cap, and True MVP bonuses now? This should only be done once.');
     if (!confirmed) {
       return;
     }
@@ -1083,7 +1090,7 @@ export default function PointsAdmin() {
               <Trophy className="text-fuchsia-400" />
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold">Season-End Awards</h2>
-                <p className="text-sm text-gray-400">Apply +500 to the franchise of the Orange Cap, Purple Cap, and Most Valuable Player winners.</p>
+                <p className="text-sm text-gray-400">Apply +500 to the franchise of the Orange Cap, Purple Cap, and True MVP winners.</p>
               </div>
             </div>
             <div className="space-y-4">
@@ -1106,10 +1113,10 @@ export default function PointsAdmin() {
               <Award className="text-emerald-400" />
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold">Partner IPL Team Win</h2>
-                <p className="text-sm text-gray-400">Award +50 bonus points to all franchises linked to the winning IPL team.</p>
+                <p className="text-sm text-gray-400">Award partner bonuses to all franchises linked to the winning IPL team. Use +500 for the IPL final winner.</p>
               </div>
             </div>
-            <form onSubmit={awardPartnerWinBonus} className="space-y-4">
+            <form onSubmit={(event) => awardPartnerWinBonus(event)} className="space-y-4">
               <select
                 value={winningIplTeam}
                 onChange={(e) => setWinningIplTeam(e.target.value)}
@@ -1126,6 +1133,14 @@ export default function PointsAdmin() {
                 className="w-full rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
               >
                 {teamLoading ? 'Applying...' : 'Apply +50 Partner Bonus'}
+              </button>
+              <button
+                type="button"
+                onClick={(event) => awardPartnerWinBonus(event, 500)}
+                disabled={teamLoading || !winningIplTeam}
+                className="w-full rounded-2xl bg-amber-500 hover:bg-amber-400 text-black font-black py-4 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                {teamLoading ? 'Applying...' : 'Apply +500 Final Partner Bonus'}
               </button>
             </form>
           </div>

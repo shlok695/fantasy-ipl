@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { recalculateTeamTotalPoints } from '@/utils/teamScore';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { recordAdminAudit } from '@/lib/adminAudit';
+import { hasAdminAuditAction, recordAdminAudit } from '@/lib/adminAudit';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -13,10 +13,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { iplTeam } = await request.json();
+    const { iplTeam, bonusPoints: requestedBonusPoints } = await request.json();
 
     if (!iplTeam) {
       return NextResponse.json({ error: "Missing iplTeam" }, { status: 400 });
+    }
+
+    const bonusPoints = requestedBonusPoints === 500 ? 500 : 50;
+    const auditAction = bonusPoints === 500 ? 'PARTNER_FINAL_WIN_BONUS' : 'PARTNER_WIN_BONUS';
+
+    if (auditAction === 'PARTNER_FINAL_WIN_BONUS' && await hasAdminAuditAction(auditAction)) {
+      return NextResponse.json({ error: "IPL final partner bonus has already been applied" }, { status: 400 });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -27,10 +34,9 @@ export async function POST(request: Request) {
       });
 
       for (const user of users) {
-        // Add 50 bonus points
         await tx.user.update({
           where: { id: user.id },
-          data: { bonusPoints: { increment: 50 } }
+          data: { bonusPoints: { increment: bonusPoints } }
         });
 
         // Recalculate their total
@@ -42,8 +48,8 @@ export async function POST(request: Request) {
 
     await recordAdminAudit(
       session.user!.name || 'admin',
-      'PARTNER_WIN_BONUS',
-      `${iplTeam} +50 to ${result.updatedCount} team(s)`
+      auditAction,
+      `${iplTeam} +${bonusPoints} to ${result.updatedCount} team(s)`
     );
 
     return NextResponse.json({ success: true, result });

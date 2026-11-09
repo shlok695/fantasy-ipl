@@ -6,9 +6,80 @@ import { LeaguePageHeader } from "@/components/league/LeaguePageHeader";
 import { LoadingSkeleton } from "@/components/league/LoadingSkeleton";
 import { useLeagueData } from "@/components/league/useLeagueData";
 import { getMovementLabel } from "@/lib/leagueData";
+import { basePath } from "@/lib/basePath";
+import type { DashboardTeam, TeamSummary } from "@/components/dashboard/types";
 
 export default function LeaderboardPage() {
-  const { loading, currentUserId, derived } = useLeagueData();
+  const { loading, currentUserId, derived, isAdmin, syncAlerts, setTeams } = useLeagueData();
+
+  const handleDeleteTeam = async (team: DashboardTeam) => {
+    if (!isAdmin) return;
+    const confirmed = window.confirm(`Delete ${team.name}? Players will return to the unsold pool.`);
+    if (!confirmed) return;
+
+    const response = await fetch(`${basePath}/api/teams/remove`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamId: team.id }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || "Failed to delete team");
+    }
+
+    setTeams((current) => current.filter((entry) => entry.id !== team.id));
+  };
+
+  const handleDropPlayer = async (team: DashboardTeam, player: TeamSummary["topPlayers"][number]) => {
+    if (!isAdmin) return;
+    const confirmed = window.confirm(`Drop ${player.name} from ${team.name}?`);
+    if (!confirmed) return;
+
+    const response = await fetch(`${basePath}/api/auction/drop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId: player.id }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || "Failed to drop player");
+    }
+
+    setTeams((current) =>
+      current.map((entry) =>
+        entry.id === team.id
+          ? {
+              ...entry,
+              budget: entry.budget + (player.auctionPrice || 0),
+              players: (entry.players || []).filter((item) => item.id !== player.id),
+            }
+          : entry
+      )
+    );
+  };
+
+  const handleUpdateBudget = async (teamId: string, nextBudget: number) => {
+    if (!isAdmin) return;
+
+    const response = await fetch(`${basePath}/api/teams/budget`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamId, newBudget: nextBudget }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || "Failed to update budget");
+    }
+
+    setTeams((current) =>
+      current.map((entry) =>
+        entry.id === teamId ? { ...entry, budget: nextBudget } : entry
+      )
+    );
+  };
 
   if (loading) {
     return <LoadingSkeleton />;
@@ -29,10 +100,11 @@ export default function LeaderboardPage() {
       <Leaderboard
         teams={derived.teamSummaries}
         currentUserId={currentUserId}
-        isAdmin={false}
-        onDeleteTeam={async () => {}}
-        onDropPlayer={async () => {}}
-        onUpdateBudget={async () => {}}
+        isAdmin={isAdmin}
+        syncAlerts={syncAlerts}
+        onDeleteTeam={handleDeleteTeam}
+        onDropPlayer={handleDropPlayer}
+        onUpdateBudget={handleUpdateBudget}
       />
 
       <section className="grid gap-5 lg:grid-cols-2">
