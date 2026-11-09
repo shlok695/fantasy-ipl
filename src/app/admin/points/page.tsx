@@ -68,6 +68,19 @@ function getBreakdownSummary(entry: any) {
   }
 }
 
+function formatSyncTimestamp(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
 export default function PointsAdmin() {
   const [players, setPlayers] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
@@ -713,7 +726,11 @@ export default function PointsAdmin() {
             {detectedMatchSlots.map((match, index) => {
               const hasMatch = Boolean(match?.id);
               const isFinished = String(match?.status || "").toLowerCase().includes("finish");
-              const isEarlyMatch = Number(match?.overs || 0) < 10 && !isFinished;
+              const syncState = match?.syncState || null;
+              const hasSuccessfulSync = Boolean(syncState?.lastSuccessAt);
+              const syncTimestamp = formatSyncTimestamp(syncState?.lastSuccessAt);
+              const syncLabel = syncState?.status === 'complete' ? 'Complete sync' : 'Partial sync';
+              const isEarlyMatch = Number(match?.overs || 0) < 10 && !isFinished && !hasSuccessfulSync;
 
               return (
                 <div
@@ -754,11 +771,15 @@ export default function PointsAdmin() {
                           {match.seriesName || 'Unknown series'}{match.matchType ? ` • ${match.matchType}` : ''}
                         </p>
                       )}
-                      {isEarlyMatch && (
+                      {hasSuccessfulSync ? (
+                        <p className="mt-2 text-[11px] font-bold text-emerald-300 uppercase tracking-widest flex items-center gap-1">
+                          <CheckCircle size={12} /> {syncLabel}{syncTimestamp ? ` • ${syncTimestamp}` : ''}
+                        </p>
+                      ) : isEarlyMatch ? (
                         <p className="mt-2 text-[11px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1">
                           <RefreshCw size={12} className="animate-spin" /> Waiting for the first scheduled sync checkpoint after 10 overs.
                         </p>
-                      )}
+                      ) : null}
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           type="button"
@@ -793,6 +814,7 @@ export default function PointsAdmin() {
                   matchType: detectedMatchSlots[0].matchType || null,
                   status: detectedMatchSlots[0].status || null,
                   overs: detectedMatchSlots[0].overs ?? null,
+                  syncState: detectedMatchSlots[0].syncState || null,
                   score: detectedMatchSlots[0].score || [],
                   debugPayload: detectedMatchSlots[0].debugPayload || null,
                 }, null, 2)}
