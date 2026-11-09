@@ -31,6 +31,7 @@ export async function POST() {
               points: true,
               runs: true,
               wickets: true,
+              breakdownJson: true,
             }
           }
         }

@@ -64,10 +64,12 @@ type MatchSyncStateRow = {
 };
 
 function normalizeTeamCodeForDisplayId(value: string | null | undefined) {
-  return String(value || "")
+  const normalized = String(value || "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "");
+
+  return normalized === "RCBW" ? "RCB" : normalized;
 }
 
 /** Human-readable id e.g. RRvsCSK from API team codes (team1 vs team2 order). */
@@ -123,6 +125,28 @@ export function shouldBlockSyncForPrematchStatus(
     return false;
   }
   return /\b(scheduled|upcoming|not started|yet to start|preview|starts on|coming soon)\b/.test(s);
+}
+
+function isFinalMatchStatus(statusText?: string | null) {
+  const status = String(statusText || "").toLowerCase();
+  if (!status.trim()) {
+    return false;
+  }
+
+  return /\b(won|won by|lost|no result|abandon(?:ed)?|washout|match over|finished|complete(?:d)?|super over)\b/.test(status);
+}
+
+function isUnfinishedMatchStatus(statusText?: string | null) {
+  const status = String(statusText || "").toLowerCase();
+  if (!status.trim() || isFinalMatchStatus(status)) {
+    return false;
+  }
+
+  return (
+    /\b(need|needs|required|requires|live|in progress|innings|innings break|rain|delay|drinks|strategic|stumps|trail|lead by)\b/.test(status) ||
+    /\d+\/\d+/.test(status) ||
+    /\bovers?\b/.test(status)
+  );
 }
 
 async function writeMatchSyncExternalPlayersAudit(
@@ -313,6 +337,7 @@ const IPL_TEAM_NAME_ALIASES: Record<string, string> = {
   "punjab kings": "PBKS",
   "rajasthan royals": "RR",
   "royal challengers bengaluru": "RCB",
+  "rcbw": "RCB",
   "royal challengers bangalore": "RCB",
   "sunrisers hyderabad": "SRH",
 };
@@ -333,6 +358,11 @@ function buildPartnerBonusMarkerId(matchId: string, plan: PartnerBonusPlan) {
   ].join(":");
 }
 
+function isSeasonFinalMatchId(matchId?: string | null) {
+  const finalMatchId = String(process.env.SEASON_FINAL_MATCH_ID || "").trim();
+  return Boolean(finalMatchId) && finalMatchId === String(matchId || "").trim();
+}
+
 function normalizeIplTeamCode(value?: string | null): string | null {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -340,6 +370,9 @@ function normalizeIplTeamCode(value?: string | null): string | null {
   }
 
   const upper = raw.toUpperCase().replace(/\s+/g, "");
+  if (upper === "RCBW") {
+    return "RCB";
+  }
   if (Object.values(IPL_TEAM_NAME_ALIASES).includes(upper)) {
     return upper;
   }
@@ -368,6 +401,7 @@ function isAbandonedOrNoResultStatus(statusText?: string | null): boolean {
 }
 
 function resolvePartnerBonusPlan(input: {
+  matchId?: string | null;
   statusText?: string | null;
   team1Code?: string | null;
   team2Code?: string | null;
@@ -399,7 +433,7 @@ function resolvePartnerBonusPlan(input: {
     kind: "winner" as const,
     auditAction: "PARTNER_WIN_BONUS_AUTO" as const,
     teamCodes: [winningTeamCode],
-    bonusPoints: 50,
+    bonusPoints: isSeasonFinalMatchId(input.matchId) ? 500 : 50,
   };
 }
 
@@ -1314,6 +1348,245 @@ async function maybeAutoSyncSingleConfiguredMatch(config: {
   return syncPromise;
 }
 
+function summarizeAutoSyncStatuses(results: AutoSyncStatus[]) {
+  if (results.length === 0) {
+    return "throttled" as const;
+  }
+  if (results.some((status) => status === "in-progress")) {
+    return "in-progress" as const;
+  }
+  if (results.some((status) => status === "synced")) {
+    return "synced" as const;
+  }
+  if (results.some((status) => status === "error")) {
+    return "error" as const;
+  }
+  if (results.every((status) => status === "already-synced")) {
+    return "already-synced" as const;
+  }
+  if (results.every((status) => status === "disabled")) {
+    return "disabled" as const;
+  }
+  return "throttled" as const;
+}
+
+async function findUnfinishedSyncedMatchIds(limit = 6) {
+  const matches = await prisma.match.findMany({
+    where: {
+      playerPoints: {
+        some: {},
+      },
+    },
+    select: {
+      id: true,
+      status: true,
+      startedAt: true,
+      updatedAt: true,
+    },
+    orderBy: [
+      { startedAt: "asc" },
+      { updatedAt: "asc" },
+    ],
+    take: 100,
+  });
+
+  return matches
+    .filter((match) => isUnfinishedMatchStatus(match.status))
+    .filter((match) => {
+      const startedAt = getTimeMs(match.startedAt);
+      return !Number.isFinite(startedAt) || startedAt <= Date.now();
+    })
+    .map((match) => String(match.id || "").trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+async function maybeAutoSyncUnfinishedMatches(config: {
+  intervalMs: number;
+  source: MatchSyncTriggerSource;
+}) {
+  const matchIds = await findUnfinishedSyncedMatchIds();
+  if (matchIds.length === 0) {
+    return [] as AutoSyncStatus[];
+  }
+
+  const intervalMs = Math.max(config.intervalMs, MIN_AUTO_SYNC_INTERVAL_MS);
+  const now = Date.now();
+
+  return Promise.all(
+    matchIds.map(async (matchId) => {
+      const syncKey = `auto-unfinished-match:${matchId}`;
+      const gateKey = `unfinished:${matchId}`;
+      const existingGate = getAutoSyncPassiveGate(gateKey);
+      if (existingGate) {
+        return existingGate.status;
+      }
+
+      const runningPromise = autoSyncPromises.get(syncKey);
+      if (runningPromise || runningMatchSyncs.has(matchId)) {
+        return "in-progress" as const;
+      }
+
+      const state = await getMatchSyncState(syncKey);
+      const stateAge = state?.lastAttemptAt
+        ? now - new Date(state.lastAttemptAt).getTime()
+        : Number.POSITIVE_INFINITY;
+      if (stateAge < intervalMs) {
+        setAutoSyncPassiveGate(
+          gateKey,
+          "throttled",
+          new Date(state?.lastAttemptAt || now).getTime() + intervalMs
+        );
+        return "throttled" as const;
+      }
+
+      await upsertMatchSyncState(syncKey, {
+        matchId,
+        lastAttemptAt: new Date(now).toISOString(),
+        lastSuccessAt: state?.lastSuccessAt ?? null,
+        lastError: null,
+        lastCheckpoint: Number(state?.lastCheckpoint || 0) + 1,
+      });
+
+      const syncPromise = (async () => {
+        try {
+          const syncRun = startMatchSyncRun(
+            matchId,
+            {
+              name: "system:auto-sync-unfinished",
+              bypassAdmin: true,
+            },
+            {
+              source: config.source,
+              scheduledTime: null,
+              syncKey,
+              triggerStatus: "started",
+              reason: "retrying unfinished match status",
+            }
+          );
+
+          if (syncRun.status === "in-progress") {
+            return "in-progress" as const;
+          }
+
+          await syncRun.promise;
+
+          await upsertMatchSyncState(syncKey, {
+            matchId,
+            lastAttemptAt: new Date().toISOString(),
+            lastSuccessAt: new Date().toISOString(),
+            lastError: null,
+            lastCheckpoint: Number(state?.lastCheckpoint || 0) + 1,
+          });
+
+          setAutoSyncPassiveGate(gateKey, "throttled", Date.now() + intervalMs);
+          return "synced" as const;
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unknown unfinished-match sync error";
+
+          await upsertMatchSyncState(syncKey, {
+            matchId,
+            lastAttemptAt: new Date().toISOString(),
+            lastSuccessAt: state?.lastSuccessAt ?? null,
+            lastError: message.slice(0, 300),
+            lastCheckpoint: Number(state?.lastCheckpoint || 0) + 1,
+          });
+
+          setAutoSyncPassiveGate(gateKey, "throttled", Date.now() + intervalMs);
+          return "error" as const;
+        } finally {
+          autoSyncPromises.delete(syncKey);
+        }
+      })();
+
+      autoSyncPromises.set(syncKey, syncPromise);
+      return syncPromise;
+    })
+  );
+}
+
+async function applyMissingPartnerBonusesForFinalMatches(actorName = "system:auto-sync") {
+  const matches = await prisma.match.findMany({
+    select: {
+      id: true,
+      status: true,
+      team1Code: true,
+      team2Code: true,
+      team1Name: true,
+      team2Name: true,
+    },
+  });
+
+  const candidates = matches
+    .map((match) => ({
+      match,
+      plan: resolvePartnerBonusPlan({
+        matchId: match.id,
+        statusText: match.status,
+        team1Code: match.team1Code,
+        team2Code: match.team2Code,
+        team1Name: match.team1Name,
+        team2Name: match.team2Name,
+      }),
+    }))
+    .filter((entry): entry is { match: typeof matches[number]; plan: PartnerBonusPlan } =>
+      Boolean(entry.plan) && (entry.plan?.kind === "shared" || isSeasonFinalMatchId(entry.match.id))
+    );
+
+  if (candidates.length === 0) {
+    return 0;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "AdminAuditLog" (
+        "id" TEXT PRIMARY KEY,
+        "actor" TEXT NOT NULL,
+        "action" TEXT NOT NULL,
+        "details" TEXT NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    let appliedTeams = 0;
+    for (const { match, plan } of candidates) {
+      const markerId = buildPartnerBonusMarkerId(match.id, plan);
+      const markerInserted = await tx.$executeRawUnsafe(
+        `INSERT OR IGNORE INTO "AdminAuditLog" ("id", "actor", "action", "details")
+         VALUES (?, ?, ?, ?)`,
+        markerId,
+        actorName,
+        `${plan.auditAction}_MARKER`,
+        `match:${match.id} teams:${plan.teamCodes.join(",")} points:${plan.bonusPoints}`
+      );
+
+      if (markerInserted <= 0) {
+        continue;
+      }
+
+      for (const teamCode of plan.teamCodes) {
+        const partnerTeams = await tx.user.findMany({
+          where: { iplTeam: teamCode },
+          select: { id: true },
+        });
+
+        for (const partnerTeam of partnerTeams) {
+          await tx.user.update({
+            where: { id: partnerTeam.id },
+            data: { bonusPoints: { increment: plan.bonusPoints } },
+          });
+          await recalculateTeamTotalPoints(partnerTeam.id, tx);
+        }
+
+        appliedTeams += partnerTeams.length;
+      }
+    }
+
+    return appliedTeams;
+  });
+}
+
 export function startMatchSyncRun(
   matchId: string,
   actor: SyncActor,
@@ -1435,6 +1708,7 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
         }
       : null;
     partnerBonusPlan = resolvePartnerBonusPlan({
+      matchId: effectiveMatchId,
       statusText:
         effectiveMatchMeta?.status ?? scorecardResult.statusText ?? null,
       team1Code: effectiveMatchMeta?.team1Code ?? null,
@@ -1729,6 +2003,7 @@ export async function syncMatchPoints(matchId: string, actor: SyncActor) {
               points: true,
               runs: true,
               wickets: true,
+              breakdownJson: true,
             },
           },
         },
@@ -1844,133 +2119,67 @@ export async function maybeAutoSyncConfiguredMatch(
     return "throttled";
   }
 
+  const results: AutoSyncStatus[] = [];
+  let reason: string | null = null;
+
   if (config.scheduledEntries.length > 0) {
-    const results = await Promise.all(
-      config.scheduledEntries.map((entry) =>
-        maybeAutoSyncScheduledMatch({
-          syncKey: entry.syncKey,
-          matchId: entry.matchId,
-          triggerAt: entry.triggerAt,
-          intervalMs: config.intervalMs,
-          source,
-        })
-      )
+    results.push(
+      ...(await Promise.all(
+        config.scheduledEntries.map((entry) =>
+          maybeAutoSyncScheduledMatch({
+            syncKey: entry.syncKey,
+            matchId: entry.matchId,
+            triggerAt: entry.triggerAt,
+            intervalMs: config.intervalMs,
+            source,
+          })
+        )
+      ))
     );
-
-    if (results.some((status) => status === "in-progress")) {
-      logMatchSyncEvent("match_sync_entrypoint_finished", {
-        source,
-        triggerStatus: "in-progress",
-      });
-      return "in-progress";
-    }
-    if (results.some((status) => status === "synced")) {
-      logMatchSyncEvent("match_sync_entrypoint_finished", {
-        source,
-        triggerStatus: "synced",
-      });
-      return "synced";
-    }
-    if (results.some((status) => status === "error")) {
-      logMatchSyncEvent("match_sync_entrypoint_finished", {
-        source,
-        triggerStatus: "error",
-      });
-      return "error";
-    }
-    if (results.every((status) => status === "already-synced")) {
-      logMatchSyncEvent("match_sync_entrypoint_finished", {
-        source,
-        triggerStatus: "already-synced",
-      });
-      return "already-synced";
-    }
-
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
-      source,
-      triggerStatus: "throttled",
-    });
-    return "throttled";
+  } else if (!config.shouldUseStoredEntries) {
+    reason = "no auto-detected match for today and stored live-sync config is not for today";
+    results.push("throttled");
+  } else if (config.entries.error) {
+    reason = config.entries.error;
+    results.push("throttled");
+  } else if (config.entries.entries.length === 0) {
+    reason = "no configured live-sync entries";
+    results.push("throttled");
+  } else {
+    results.push(
+      ...(await Promise.all(
+        config.entries.entries.map((entry) =>
+          maybeAutoSyncSingleConfiguredMatch({
+            enabled: config.enabled,
+            matchId: entry.matchId,
+            matchStartAt: entry.matchStartAt,
+            intervalMs: config.intervalMs,
+            source,
+          })
+        )
+      ))
+    );
   }
 
-  if (!config.shouldUseStoredEntries) {
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
+  results.push(
+    ...(await maybeAutoSyncUnfinishedMatches({
+      intervalMs: config.intervalMs,
       source,
-      triggerStatus: "throttled",
-      reason: "no auto-detected match for today and stored live-sync config is not for today",
-    });
-    return "throttled";
-  }
-
-  if (config.entries.error) {
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
-      source,
-      triggerStatus: "throttled",
-      reason: config.entries.error,
-    });
-    return "throttled";
-  }
-
-  if (config.entries.entries.length === 0) {
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
-      source,
-      triggerStatus: "throttled",
-      reason: "no configured live-sync entries",
-    });
-    return "throttled";
-  }
-
-  const results = await Promise.all(
-    config.entries.entries.map((entry) =>
-      maybeAutoSyncSingleConfiguredMatch({
-        enabled: config.enabled,
-        matchId: entry.matchId,
-        matchStartAt: entry.matchStartAt,
-        intervalMs: config.intervalMs,
-        source,
-      })
-    )
+    }))
   );
 
-  if (results.some((status) => status === "in-progress")) {
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
-      source,
-      triggerStatus: "in-progress",
-    });
-    return "in-progress";
-  }
-  if (results.some((status) => status === "synced")) {
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
-      source,
-      triggerStatus: "synced",
-    });
-    return "synced";
-  }
-  if (results.some((status) => status === "error")) {
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
-      source,
-      triggerStatus: "error",
-    });
-    return "error";
-  }
-  if (results.every((status) => status === "already-synced")) {
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
-      source,
-      triggerStatus: "already-synced",
-    });
-    return "already-synced";
-  }
-  if (results.every((status) => status === "disabled")) {
-    logMatchSyncEvent("match_sync_entrypoint_finished", {
-      source,
-      triggerStatus: "disabled",
-    });
-    return "disabled";
+  const partnerBonusApplications = await applyMissingPartnerBonusesForFinalMatches(
+    `system:${source}`
+  );
+  if (partnerBonusApplications > 0) {
+    results.push("synced");
   }
 
+  const status = summarizeAutoSyncStatuses(results);
   logMatchSyncEvent("match_sync_entrypoint_finished", {
     source,
-    triggerStatus: "throttled",
+    triggerStatus: status,
+    reason,
   });
-  return "throttled";
+  return status;
 }
